@@ -1,0 +1,22 @@
+[
+  {
+    "image_id": 1,
+    "test": "a kitchen and dining room and living room.",
+    "refs": [
+      "the room is empty other than the furniture. ",
+      "an open floor plan displays a modern kitchen, dining and living room arrangement.",
+      "a kitchen, dining table and a living room looks like a small space.",
+      "a small apartment is lit by modern style lamps"
+    ]
+  },
+  {
+    "image_id": 234,
+    "test": "two fedex trucks parked on the side of the street . ",
+    "refs": [
+      "a couple of fed ex delivery trucks parked outside of a building.",
+      "two fedex trucks parked on a side of a street with tall buidings behind them.",
+      "fedex trucks parked on the side of the street while cars wait in traffic.",
+      "there are a few delivery vans parked on the side of the road. "
+    ]
+  }
+]

@@ -1,0 +1,14 @@
+Manifest-Version: 1.0
+Archiver-Version: Plexus Archiver
+Built-By: peter
+Class-Path: lib/stanford-corenlp-3.6.0.jar lib/ejml-0.23.jar lib/slf4j
+ -api-1.7.12.jar lib/stanford-corenlp-3.6.0-models.jar lib/slf4j-simpl
+ e-1.7.21.jar lib/lmdbjni-0.4.6.jar lib/lmdbjni-linux64-0.4.6.jar lib/
+ lmdbjni-osx64-0.4.6.jar lib/lmdbjni-win64-0.4.6.jar lib/fst-2.47.jar 
+ lib/jackson-core-2.5.3.jar lib/javassist-3.19.0-GA.jar lib/objenesis-
+ 2.4.jar lib/guava-19.0.jar lib/json-simple-1.1.1.jar lib/Meteor-1.5.j
+ ar lib/SceneGraphParser-1.0.jar
+Created-By: Apache Maven 3.0.5
+Build-Jdk: 1.8.0_101
+Main-Class: edu.anu.spice.SpiceScorer
+
