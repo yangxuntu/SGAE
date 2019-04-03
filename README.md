@@ -25,4 +25,10 @@ source deactivate
 ```
 
 # Downloading meta data, e.g., image captions and visual features.
-1.
+You can get more details from  https://github.com/ruotianluo/self-critical.pytorch.
+1.Download preprocessed coco captions from link from Karpathy's homepage. Extract dataset_coco.json from the zip file and copy it in to data/. This file provides preprocessed captions and also standard train-val-test splits.
+The do:
+```
+python scripts/prepro_labels.py --input_json data/dataset_coco.json --output_json data/cocotalk.json --output_h5 data/cocotalk
+```
+prepro_labels.py will map all words that occur <= 5 times to a special UNK token, and create a vocabulary for all the remaining words. The image information and vocabulary are dumped into data/cocotalk.json and discretized caption data are dumped into data/cocotalk_label.h5.
