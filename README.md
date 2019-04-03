@@ -3,7 +3,9 @@ Auto-Encoding Scene Graphs for Image Captioning, CVPR 2019
 
 # Acknowledgement
 This code is implemented based on Ruotian Luo's implementation of image captioning in https://github.com/ruotianluo/self-critical.pytorch.
+
 And we use the visual features provided by paper Bottom-up and top-down attention for image captioning and visual question answering in https://github.com/peteanderson80/bottom-up-attention.
+
 If you like this code, please also consider to cite their corresponding papers and my CVPR paper.
 
 # Installation
