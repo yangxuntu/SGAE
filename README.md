@@ -24,7 +24,7 @@ If you want to exit from this environment, you can run the following code to exi
 source deactivate
 ```
 
-# Downloading meta data, e.g., image captions and visual features.
+# Downloading meta data, e.g., image captions, visual features, image scene graphs, sentence scene graphs.
 You can get more details from  https://github.com/ruotianluo/self-critical.pytorch.
 
 1.Download preprocessed coco captions from link from Karpathy's homepage. Extract dataset_coco.json from the zip file and copy it in to data/. This file provides preprocessed captions and also standard train-val-test splits.
@@ -36,3 +36,14 @@ prepro_labels.py will map all words that occur <= 5 times to a special UNK token
 
 2.Download Bottom-up features.
 Download pre-extracted feature from https://github.com/peteanderson80/bottom-up-attention. You can either download adaptive one or fixed one. We use the ''10 to 100 features per image (adaptive)'' in our experiments.
+For example:
+```
+mkdir data/bu_data; cd data/bu_data
+wget https://storage.googleapis.com/bottom-up-attention/trainval.zip
+unzip trainval.zip
+```
+Then :
+```
+python script/make_bu_data.py --output_dir data/cocobu
+```
+This will create data/cocobu_fc, data/cocobu_att and data/cocobu_box. If you want to use bottom-up feature, you can just follow the following steps and replace all cocotalk with cocobu.
