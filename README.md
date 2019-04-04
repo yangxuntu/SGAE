@@ -27,7 +27,9 @@ source deactivate
 # Downloading meta data, e.g., image captions, visual features, image scene graphs, sentence scene graphs.
 You can get more details from  https://github.com/ruotianluo/self-critical.pytorch.
 
-1.Download preprocessed coco captions from link from Karpathy's homepage. Extract dataset_coco.json from the zip file and copy it in to data/. This file provides preprocessed captions and also standard train-val-test splits.
+1.Download preprocessed coco captions from link from Karpathy's homepage. Extract dataset_coco.json from the zip file and copy it in to data/. 
+
+This file provides preprocessed captions and also standard train-val-test splits.
 The do:
 ```
 python scripts/prepro_labels.py --input_json data/dataset_coco.json --output_json data/cocotalk.json --output_h5 data/cocotalk
@@ -37,6 +39,7 @@ prepro_labels.py will map all words that occur <= 5 times to a special UNK token
 Also, you can download the file 'cocobu2.json' and 'cocobu2_label.h5' from https://drive.google.com/drive/folders/1GvwpchUnfqUjvlpWTYbmEvhvkJTIWWRb?usp=sharing and put them into the folder 'data' (if you do not have this folder, just create one), which are processed by myself for facilitating the usage of this code. I also release two well-trained models based on these two files which are modelid740072 and modelid640075.
 
 2.Download Bottom-up features.
+
 Download pre-extracted feature from https://github.com/peteanderson80/bottom-up-attention. You can either download adaptive one or fixed one. We use the ''10 to 100 features per image (adaptive)'' in our experiments.
 For example:
 ```
@@ -51,4 +54,5 @@ python script/make_bu_data.py --output_dir data/cocobu
 This will create data/cocobu_fc, data/cocobu_att and data/cocobu_box. If you want to use bottom-up feature, you can just follow the following steps and replace all cocotalk with cocobu.
 
 3.Download the extracted image scene graph and sentence scene graph.
+
 Download the files 'coco_pred_sg.zip' and 'coco_spice_sg2.zip' from https://drive.google.com/drive/folders/1GvwpchUnfqUjvlpWTYbmEvhvkJTIWWRb?usp=sharing and put them into the folder 'data' and then unzip them. The file 'coco_pred_sg.zip' contains all the image scene graphs and 'coco_spice_sg2.zip' contains all the sentence scene graphs.
