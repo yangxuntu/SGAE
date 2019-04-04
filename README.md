@@ -50,5 +50,5 @@ python script/make_bu_data.py --output_dir data/cocobu
 ```
 This will create data/cocobu_fc, data/cocobu_att and data/cocobu_box. If you want to use bottom-up feature, you can just follow the following steps and replace all cocotalk with cocobu.
 
-3.Download the extracted image scene graph and sentence scene graph
+3.Download the extracted image scene graph and sentence scene graph.
 Download the files 'coco_pred_sg.zip' and 'coco_spice_sg2.zip' from https://drive.google.com/drive/folders/1GvwpchUnfqUjvlpWTYbmEvhvkJTIWWRb?usp=sharing and put them into the folder 'data' and then unzip them. The file 'coco_pred_sg.zip' contains all the image scene graphs and 'coco_spice_sg2.zip' contains all the sentence scene graphs.
