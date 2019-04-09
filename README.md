@@ -71,4 +71,5 @@ Important notes: I reorganized and optimized the code recently and found that ev
 ```
 python eval_mem.py --dump_images 0 --num_images 5000 --model id66/modelid660066.pth --infos_path id66/infos_id660066.pkl --language_eval 1 --beam_size 5 --split test --index_eval 1 --use_rela 0 --training_mode 2 --memory_cell_path id66/memory_cellid660066.npz --sg_dict_path data/spice_sg_dict2.npz --input_ssg_dir data/coco_spice_sg2 --batch_size 50
 ```
+what you need to do is to switch the model id with your id, like 66 to 01, and change the number like 0066 to your trained model, like 0066 to 0001.
 
