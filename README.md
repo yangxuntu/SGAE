@@ -56,3 +56,9 @@ This will create data/cocobu_fc, data/cocobu_att and data/cocobu_box. If you wan
 3.Download the extracted image scene graph and sentence scene graph.
 
 Download the files 'coco_pred_sg.zip' and 'coco_spice_sg2.zip' from https://drive.google.com/drive/folders/1GvwpchUnfqUjvlpWTYbmEvhvkJTIWWRb?usp=sharing and put them into the folder 'data' and then unzip them. The file 'coco_pred_sg.zip' contains all the image scene graphs and 'coco_spice_sg2.zip' contains all the sentence scene graphs.
+
+# Training the model
+1. After downloading the codes and meta data, you can train the model by using the following code:
+```
+python train_mem.py --id id66 --caption_model lstm_mem4 --input_json data/cocobu2.json --input_fc_dir data/cocobu_fc --input_att_dir data/cocobu_att --input_rela_dir data/cocobu_sg_img --input_ssg_dir data/coco_spice_sg2 --input_label_h5 data/cocobu2_label.h5 --sg_dict_path data/spice_sg_dict2.npz --batch_size 50 --accumulate_number 2 --learning_rate 5e-4 --learning_rate_decay_start 0 --learning_rate_decay_every 5 --scheduled_sampling_start 0 --checkpoint_path id66 --save_checkpoint_every 5000 --val_images_use 5000 --max_epochs 150 --rnn_size 1000 --input_encoding_size 1000 --att_feat_size 2048 --att_hid_size 512 --self_critical_after 40 --train_split train --memory_size 10000 --memory_index c --step2_train_after 10 --step3_train_after 20 --use_rela 0 --gpu 5
+```
