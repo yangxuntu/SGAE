@@ -67,11 +67,25 @@ Important notes: I reorganized and optimized the code recently and found that ev
 2.You can also go to my google drive to download two well-trained models which are modelid740072 and modelid640075 for getting about 128.3 CIDEr-D scores, and these two models are trained by using the above scripts.
 
 3.The details of parameters:
-```
---id the id of your model, which is usually set as the same as check point, which is helpful for you to train from the check point
 
-```
+--id: the id of your model, which is usually set as the same as check point, which is helpful for you to train from the check point.
 
+--batch_size, --accumulate_number: these two parameters are set for users who do not have large gpu, if you want to set batch size as 100, you can set batch_size as 50, and set accumulate_number as 2, also you can set batch_size as 20 and accumulate_number as 5. Importantly, they are not totally equal to set batch_size as 100 and accumulate_number as 1, the bigger the bathc_size is, the higher the performance.
+
+--self_critical_after: when reinforcement leanring begins, if this value is set as 40, it means that after training 40 epoches, the reinforcement loss is used. Generally, if you want to have a good CIDEr-D score, you should use cross entropy loss first and then use reinforcement loss.
+
+--step2_train_after: when the dictionary is learned, for example, if this value is set as 10, then before 10 epochs, only the decoder is trained by sentence scene graphs and the dictionary is not learned. 
+
+--step3_train_after: when image captioning encoder-decoder is learned, for example, if this value is set as 20, then before 20 epochs, only sentence scene graphs are used to learn the dictionary, and after 20 epochs, the sentence scene graphs are no longer used and the image encoder-decoder is trained.
+
+--use_rela: whether use image scene graph
+
+4.Tranining from checkpoints.
+The codes provide the ability of training from checkpoints. For example, if you want to train the model from one checkpoint, say, 22, you can use the following code to continute:
+```
+python train_mem.py --id id66 --caption_model lstm_mem4 --input_json data/cocobu2.json --input_fc_dir data/cocobu_fc --input_att_dir data/cocobu_att --input_rela_dir data/cocobu_sg_img --input_ssg_dir data/coco_spice_sg2 --input_label_h5 data/cocobu2_label.h5 --sg_dict_path data/spice_sg_dict2.npz --batch_size 50 --accumulate_number 2 --learning_rate 5e-4 --learning_rate_decay_start 0 --learning_rate_decay_every 5 --scheduled_sampling_start 0 --checkpoint_path id66 --save_checkpoint_every 5000 --val_images_use 5000 --max_epochs 150 --rnn_size 1000 --input_encoding_size 1000 --att_feat_size 2048 --att_hid_size 512 --self_critical_after 40 --train_split train --memory_size 10000 --memory_index c --step2_train_after 10 --step3_train_after 20 --use_rela 0 --gpu 5 --start_from 22 --memory_cell_path id66/memory_cellid660022.npz
+```
+the parameter start_from and memory_cell_path are used for training from checkpoints.
 
 # Evaluating the model
 1.After training the model or downloading the well-trained model, you can evaluate them by using the following code:
