@@ -64,7 +64,14 @@ python train_mem.py --id id66 --caption_model lstm_mem4 --input_json data/cocobu
 ```
 Important notes: I reorganized and optimized the code recently and found that even without MGCN, this code can achieve 127.8 CIDEr-D score. But you need to have a 16G gpu like DGX. If your memory is not enough, you should change --batch_size from 50 to 25, and --accumulate_number from 2 to 4, which can make the batch size be 100. But I found that these two different settings will lead to different performances.
 
-2.you can also go to my google drive to download two well-trained models which are modelid740072 and modelid640075 for getting about 128.3 CIDEr-D scores, and these two models are trained by using the above scripts.
+2.You can also go to my google drive to download two well-trained models which are modelid740072 and modelid640075 for getting about 128.3 CIDEr-D scores, and these two models are trained by using the above scripts.
+
+3.The details of parameters:
+```
+--id the id of your model, which is usually set as the same as check point, which is helpful for you to train from the check point
+
+```
+
 
 # Evaluating the model
 1.After training the model or downloading the well-trained model, you can evaluate them by using the following code:
