@@ -58,7 +58,17 @@ This will create data/cocobu_fc, data/cocobu_att and data/cocobu_box. If you wan
 Download the files 'coco_pred_sg.zip' and 'coco_spice_sg2.zip' from https://drive.google.com/drive/folders/1GvwpchUnfqUjvlpWTYbmEvhvkJTIWWRb?usp=sharing and put them into the folder 'data' and then unzip them. The file 'coco_pred_sg.zip' contains all the image scene graphs and 'coco_spice_sg2.zip' contains all the sentence scene graphs.
 
 # Training the model
-1. After downloading the codes and meta data, you can train the model by using the following code:
+1.After downloading the codes and meta data, you can train the model by using the following code:
 ```
 python train_mem.py --id id66 --caption_model lstm_mem4 --input_json data/cocobu2.json --input_fc_dir data/cocobu_fc --input_att_dir data/cocobu_att --input_rela_dir data/cocobu_sg_img --input_ssg_dir data/coco_spice_sg2 --input_label_h5 data/cocobu2_label.h5 --sg_dict_path data/spice_sg_dict2.npz --batch_size 50 --accumulate_number 2 --learning_rate 5e-4 --learning_rate_decay_start 0 --learning_rate_decay_every 5 --scheduled_sampling_start 0 --checkpoint_path id66 --save_checkpoint_every 5000 --val_images_use 5000 --max_epochs 150 --rnn_size 1000 --input_encoding_size 1000 --att_feat_size 2048 --att_hid_size 512 --self_critical_after 40 --train_split train --memory_size 10000 --memory_index c --step2_train_after 10 --step3_train_after 20 --use_rela 0 --gpu 5
 ```
+Important notes: I reorganized and optimized the code recently and found that even without MGCN, this code can achieve 127.8 CIDEr-D score. But you need to have a 16G gpu like DGX. If your memory is not enough, you should change --batch_size from 50 to 25, and --accumulate_number from 2 to 4, which can make the batch size be 100. But I found that these two different settings will lead to different performances.
+
+2.you can also go to my google drive to download two well-trained models which are modelid740072 and modelid640075 for getting about 128.3 CIDEr-D scores, and these two models are trained by using the above scripts.
+
+# Evaluating the model
+1.After training the model or downloading the well-trained model, you can evaluate them by using the following code:
+```
+python eval_mem.py --dump_images 0 --num_images 5000 --model id66/modelid660066.pth --infos_path id66/infos_id660066.pkl --language_eval 1 --beam_size 5 --split test --index_eval 1 --use_rela 0 --training_mode 2 --memory_cell_path id66/memory_cellid660066.npz --sg_dict_path data/spice_sg_dict2.npz --input_ssg_dir data/coco_spice_sg2 --batch_size 50
+```
+
