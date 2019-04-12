@@ -98,24 +98,13 @@ class DataLoader(data.Dataset):
             img = self.info['images'][ix]
             if img['split'] == 'train':
                 self.split_ix['train'].append(ix)
-                # if img['sg_info']:
-                #     self.split_ix['train_sg'].append(ix)
             elif img['split'] == 'val':
                 self.split_ix['val'].append(ix)
                 self.split_ix['train'].append(ix)
-                # if img['sg_info']:
-                #     self.split_ix['val_sg'].append(ix)
             elif img['split'] == 'test':
                 self.split_ix['test'].append(ix)
-                # a = np.random.randint(1,50)
-                # if a<=1:
-                #     self.split_ix['train'].append(ix)
-                # if img['sg_info']:
-                #     self.split_ix['test_sg'].append(ix)
             elif opt.train_only == 0: # restval
                 self.split_ix['train'].append(ix)
-                # if img['sg_info']:
-                #     self.split_ix['train_sg'].append(ix)
 
 
         print('assigned %d images to split train' %len(self.split_ix['train']))
