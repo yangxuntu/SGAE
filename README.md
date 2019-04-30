@@ -1,4 +1,4 @@
-# SGAE/ pytorch 0.3.0
+# SGAE/ pytorch 0.4.0
 Auto-Encoding Scene Graphs for Image Captioning, CVPR 2019
 
 # Acknowledgement
