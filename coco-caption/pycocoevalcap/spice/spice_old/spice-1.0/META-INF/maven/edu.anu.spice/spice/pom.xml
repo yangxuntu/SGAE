@@ -140,7 +140,7 @@
 		<dependency>
 			<groupId>edu.stanford.nlp</groupId>
 			<artifactId>stanford-corenlp</artifactId>
-			<version>3.6.0</version>
+			<version>4.4.0</version>
 			<exclusions>
 				<exclusion>
 					<groupId>com.io7m.xom</groupId>
