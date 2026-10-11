@@ -1,0 +1,2862 @@
+Berikut satu fail HTML lengkap yang menggabungkan semua maklumat — workflow, `deploy.sh`, task definition, IAM, PR, CHANGELOG, release notes, README, CONTRIBUTING, badge, file tree, dan rollback.
+
+Simpan sebagai `index.html` dan buka terus dalam pelayar.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECS Deployment Pipeline — Full Reference</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #161923;
+    --panel-2: #1c2030;
+    --border: #262b3d;
+    --text: #e6e8ee;
+    --muted: #9aa0b4;
+    --accent: #7aa2f7;
+    --accent-2: #bb9af7;
+    --green: #9ece6a;
+    --red: #f7768e;
+    --yellow: #e0af68;
+    --code-bg: #0b0d13;
+    --radius: 10px;
+    --maxw: 1100px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, kbd { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+
+  /* Layout */
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    max-width: 1400px;
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: static !important; height: auto !important; border-right: none !important; border-bottom: 1px solid var(--border); }
+  }
+
+  /* Sidebar */
+  .sidebar {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 22px 18px;
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .sidebar h2 {
+    font-size: 12px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 18px 0 8px;
+  }
+  .sidebar a {
+    display: block;
+    padding: 6px 10px;
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 14px;
+    opacity: .85;
+  }
+  .sidebar a:hover { background: var(--panel-2); opacity: 1; text-decoration: none; }
+  .brand {
+    font-weight: 700;
+    font-size: 16px;
+    margin-bottom: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .brand-sub { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+
+  /* Main */
+  main { padding: 40px 42px 80px; max-width: var(--maxw); }
+  h1 { font-size: 30px; margin: 0 0 8px; letter-spacing: -.02em; }
+  h2 {
+    font-size: 22px;
+    margin: 44px 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    scroll-margin-top: 20px;
+  }
+  h3 { font-size: 17px; margin: 26px 0 10px; color: var(--accent); }
+  h4 { font-size: 15px; margin: 20px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  p { color: #d3d7e3; }
+  .lead { color: var(--muted); font-size: 16px; margin-top: 0; }
+
+  /* Code */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.55;
+    position: relative;
+  }
+  pre code { color: #c8d3f5; }
+  :not(pre) > code {
+    background: var(--panel-2);
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-size: 13px;
+    color: var(--accent-2);
+  }
+  .file-tag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 5px 5px 0 0;
+    background: var(--panel-2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    margin-bottom: -1px;
+    font-family: ui-monospace, monospace;
+  }
+  .file-tag + pre { border-top-left-radius: 0; }
+
+  /* Cards / panels */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin: 14px 0;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 14px 0;
+  }
+  .card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .card h5 { margin: 0 0 6px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+  .card p { margin: 0; font-size: 13px; color: var(--muted); }
+
+  /* Flow diagram */
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+  .flow span {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    padding: 6px 11px;
+    border-radius: 20px;
+  }
+  .flow em { color: var(--muted); font-style: normal; }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  tr:hover td { background: rgba(122,162,247,.04); }
+
+  /* Badges & pills */
+  .pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    vertical-align: middle;
+  }
+  .pill-green { background: rgba(158,206,106,.15); color: var(--green); }
+  .pill-red { background: rgba(247,118,142,.15); color: var(--red); }
+  .pill-yellow { background: rgba(224,175,104,.15); color: var(--yellow); }
+  .pill-blue { background: rgba(122,162,247,.15); color: var(--accent); }
+
+  /* Checklist */
+  ul.checklist { list-style: none; padding-left: 0; }
+  ul.checklist li { padding: 4px 0 4px 26px; position: relative; color: #d3d7e3; }
+  ul.checklist li::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 9px;
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--muted);
+    border-radius: 4px;
+  }
+
+  /* Callouts */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: rgba(122,162,247,.07);
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  .callout.warn { border-color: var(--yellow); background: rgba(224,175,104,.08); }
+  .callout.danger { border-color: var(--red); background: rgba(247,118,142,.08); }
+  .callout strong { color: var(--text); }
+
+  /* TOC top nav for mobile */
+  .topnav { display: none; }
+  @media (max-width: 900px) {
+    .topnav {
+      display: block;
+      position: sticky;
+      top: 0;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 14px;
+      z-index: 10;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .topnav a { margin-right: 12px; font-size: 13px; }
+    main { padding: 24px 20px 60px; }
+  }
+
+  /* Code copy button visual */
+  .pre-wrap { position: relative; }
+  .pre-wrap .lang {
+    position: absolute; top: 8px; right: 12px;
+    font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+  }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+  .footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="topnav">
+  <a href="#overview">Overview</a>
+  <a href="#workflow">Workflow</a>
+  <a href="#deploysh">deploy.sh</a>
+  <a href="#taskdef">Task Def</a>
+  <a href="#dockerfile">Dockerfile</a>
+  <a href="#iam">IAM</a>
+  <a href="#oidc">OIDC</a>
+  <a href="#readme">README</a>
+  <a href="#contributing">Contributing</a>
+  <a href="#pr">PR</a>
+  <a href="#changelog">CHANGELOG</a>
+  <a href="#rollback">Rollback</a>
+</div>
+
+<div class="layout">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand">ECS Deploy Pipeline</div>
+    <div class="brand-sub">Full reference — workflow, IAM, docs</div>
+
+    <h2>Getting started</h2>
+    <a href="#overview">Overview</a>
+    <a href="#tree">File tree</a>
+    <a href="#flow">Flow diagram</a>
+    <a href="#prereq">Prerequisites</a>
+    <a href="#setup">First-time setup</a>
+
+    <h2>Artifacts</h2>
+    <a href="#workflow">aws.yml</a>
+    <a href="#deploysh">deploy.sh</a>
+    <a href="#taskdef">task-definition.json</a>
+    <a href="#dockerfile">Dockerfile</a>
+    <a href="#serverjs">server.js</a>
+    <a href="#ignore">.dockerignore / .gitignore</a>
+
+    <h2>AWS</h2>
+    <a href="#iam">IAM policy</a>
+    <a href="#oidc">OIDC trust</a>
+    <a href="#ecsroles">ECS roles</a>
+
+    <h2>Documentation</h2>
+    <a href="#readme">README § Deployment</a>
+    <a href="#contributing">CONTRIBUTING.md</a>
+    <a href="#badge">Status badge</a>
+
+    <h2>Release</h2>
+    <a href="#pr">PR description</a>
+    <a href="#changelog">CHANGELOG</a>
+    <a href="#release">Release notes</a>
+
+    <h2>Operations</h2>
+    <a href="#troubleshoot">Troubleshooting</a>
+    <a href="#rollback">Rollback</a>
+    <a href="#commit">Commit commands</a>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main>
+
+    <h1>ECS Deployment Pipeline</h1>
+    <p class="lead">Push-to-deploy to Amazon ECS from <code>gh-pages</code> via GitHub Actions and OIDC. Everything you need — workflow, IAM, bootstrap script, docs, and release notes — in one page.</p>
+
+    <div class="grid">
+      <div class="card"><h5>Auth</h5><p>GitHub OIDC — no long-lived AWS keys stored in GitHub.</p></div>
+      <div class="card"><h5>Compute</h5><p>ECS on Fargate, single container, awslogs driver.</p></div>
+      <div class="card"><h5>Registry</h5><p>Amazon ECR, image tagged with commit SHA.</p></div>
+      <div class="card"><h5>Trigger</h5><p>Push to <code>gh-pages</code>.</p></div>
+    </div>
+
+    <!-- ================= OVERVIEW ================= -->
+    <h2 id="overview">Overview</h2>
+    <p>Setiap <em>push</em> ke cawangan <code>gh-pages</code> akan:</p>
+    <ol>
+      <li>Mengambil kredential AWS sementara melalui GitHub OIDC.</li>
+      <li>Membina imej Docker dan menolaknya ke Amazon ECR dengan tag <code>${{ github.sha }}</code>.</li>
+      <li>Meletakkan imej baharu ke dalam task definition ECS.</li>
+      <li>Mendaftar task definition dan mengemas kini ECS service.</li>
+      <li>Menunggu service stabil sebelum tamat.</li>
+    </ol>
+
+    <!-- ================= FILE TREE ================= -->
+    <h2 id="tree">File tree</h2>
+    <pre><code>.
+├── .aws/
+│   └── task-definition.json          # Fargate task definition template
+├── .github/
+│   └── workflows/
+│       └── aws.yml                   # Build → ECR → ECS deploy
+├── docs/
+│   └── deployment.md                 # (optional) README § Deployment split out
+├── Dockerfile                        # Multi-stage Node 20 image (example)
+├── server.js                         # Example app
+├── deploy.sh                         # Idempotent AWS bootstrap
+├── CHANGELOG.md                      # Keep a Changelog
+├── CONTRIBUTING.md
+├── README.md                         # Badge + Deployment section
+├── .dockerignore
+├── .gitignore
+└── package.json</code></pre>
+
+    <!-- ================= FLOW ================= -->
+    <h2 id="flow">Flow diagram</h2>
+    <div class="flow">
+      <span>push to <code>gh-pages</code></span> <em>→</em>
+      <span>assume AWS role (OIDC)</span> <em>→</em>
+      <span>docker build</span> <em>→</em>
+      <span>push to ECR (SHA tag)</span> <em>→</em>
+      <span>render task def</span> <em>→</em>
+      <span>register + update service</span> <em>→</em>
+      <span>wait for stability</span>
+    </div>
+
+    <!-- ================= PREREQ ================= -->
+    <h2 id="prereq">Prerequisites</h2>
+    <ul>
+      <li>AWS CLI v2, authenticated dengan kredential yang boleh mencipta IAM roles, ECR repos, ECS clusters/services, dan OIDC providers.</li>
+      <li>VPC sedia ada dengan:
+        <ul>
+          <li>Dua atau lebih subnet yang mempunyai route ke NAT gateway atau internet gateway.</li>
+          <li>Security group yang membenarkan inbound pada port kontena (atau ALB di hadapan).</li>
+        </ul>
+      </li>
+      <li>Repositori GitHub dengan Actions diaktifkan.</li>
+    </ul>
+
+    <!-- ================= SETUP ================= -->
+    <h2 id="setup">First-time setup</h2>
+
+    <h3>1. Edit CONFIG block dalam <code>deploy.sh</code></h3>
+    <pre><code>AWS_REGION="us-east-2"
+ECR_REPO="my-ecr-repo"
+ECS_CLUSTER="my-ecs-cluster"
+ECS_SERVICE="my-ecs-service"
+ECS_TASK_FAMILY="my-task"
+CONTAINER_NAME="my-container"
+CONTAINER_PORT="80"
+
+GITHUB_ORG="OWNER"
+GITHUB_REPO="REPO"
+GITHUB_BRANCH="gh-pages"
+
+VPC_SUBNETS="subnet-xxxxxxxx,subnet-yyyyyyyy"
+VPC_SECURITY_GROUPS="sg-xxxxxxxx"</code></pre>
+
+    <h3>2. Jalankan bootstrap</h3>
+    <pre><code>chmod +x deploy.sh
+./deploy.sh</code></pre>
+    <p>Skrip ini akan mencipta atau mengesahkan:</p>
+    <ul>
+      <li>ECR repository</li>
+      <li>ECS cluster dan service</li>
+      <li><code>ecsTaskExecutionRole</code></li>
+      <li>GitHub OIDC provider (<code>token.actions.githubusercontent.com</code>)</li>
+      <li>Role <code>github-actions-ecs-deploy-oidc</code> dengan kebenaran ECR push + ECS deploy</li>
+    </ul>
+
+    <h3>3. Tampal nilai ke dalam <code>aws.yml</code></h3>
+    <pre><code>env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: my-ecr-repo
+  ECS_SERVICE: my-ecs-service
+  ECS_CLUSTER: my-ecs-cluster
+  ECS_TASK_DEFINITION: .aws/task-definition.json
+  CONTAINER_NAME: my-container
+
+permissions:
+  id-token: write
+  contents: read</code></pre>
+
+    <h3>4. Commit dan push</h3>
+    <pre><code>git add .github/workflows/aws.yml .aws/task-definition.json deploy.sh Dockerfile
+git commit -m "Add ECS deployment workflow with setup instructions"
+git push origin gh-pages</code></pre>
+
+    <!-- ================= WORKFLOW ================= -->
+    <h2 id="workflow">Workflow — <code>.github/workflows/aws.yml</code></h2>
+    <p>Gunakan versi OIDC ini. Ia tidak menyimpan access key dalam GitHub secrets.</p>
+    <span class="file-tag">.github/workflows/aws.yml</span>
+<pre><code>name: Deploy to Amazon ECS
+
+on:
+  push:
+    branches: [ "gh-pages" ]
+
+env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: my-ecr-repo
+  ECS_SERVICE: my-ecs-service
+  ECS_CLUSTER: my-ecs-cluster
+  ECS_TASK_DEFINITION: .aws/task-definition.json
+  CONTAINER_NAME: my-container
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::YOUR_ACCOUNT_ID:role/github-actions-ecs-deploy-oidc
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" &gt;&gt; $GITHUB_OUTPUT
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true</code></pre>
+
+    <div class="callout">
+      <strong>Fallback access-key auth.</strong> Jika perlu, gantikan step OIDC dengan:
+      <pre style="margin-top:8px"><code>- name: Configure AWS credentials
+  uses: aws-actions/configure-aws-credentials@v4
+  with:
+    aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    aws-region: ${{ env.AWS_REGION }}</code></pre>
+      OIDC tetap lebih disyorkan.
+    </div>
+
+    <!-- ================= DEPLOY.SH ================= -->
+    <h2 id="deploysh">Bootstrap — <code>deploy.sh</code></h2>
+    <p>Skrip idempotent. Selamat dijalankan berulang kali.</p>
+    <span class="file-tag">deploy.sh</span>
+<pre><code>#!/usr/bin/env bash
+#
+# deploy.sh — one-shot setup for the GitHub Actions → Amazon ECS pipeline.
+#
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# CONFIG — edit these
+# ---------------------------------------------------------------------------
+AWS_REGION="us-east-2"
+AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+
+ECR_REPO="my-ecr-repo"
+ECS_CLUSTER="my-ecs-cluster"
+ECS_SERVICE="my-ecs-service"
+ECS_TASK_FAMILY="my-task"
+CONTAINER_NAME="my-container"
+CONTAINER_PORT="80"
+
+GITHUB_ORG="OWNER"
+GITHUB_REPO="REPO"
+GITHUB_BRANCH="gh-pages"
+
+VPC_SUBNETS="subnet-xxxxxxxx,subnet-yyyyyyyy"
+VPC_SECURITY_GROUPS="sg-xxxxxxxx"
+
+OIDC_ROLE_NAME="github-actions-ecs-deploy-oidc"
+EXEC_ROLE_NAME="ecsTaskExecutionRole"
+
+TASK_DEF_FILE=".aws/task-definition.json"
+# ---------------------------------------------------------------------------
+
+log()  { printf "\n\033[1;34m==>\033[0m %s\n" "$*"; }
+
+# 0. Sanity checks
+log "Verifying AWS identity"
+aws sts get-caller-identity &gt;/dev/null
+echo "Account: $AWS_ACCOUNT_ID  Region: $AWS_REGION"
+
+# 1. ECR repository
+log "Ensuring ECR repository: $ECR_REPO"
+if aws ecr describe-repositories --repository-names "$ECR_REPO" \
+     --region "$AWS_REGION" &gt;/dev/null 2&gt;&amp;1; then
+  echo "already exists"
+else
+  aws ecr create-repository \
+    --repository-name "$ECR_REPO" \
+    --image-scanning-configuration scanOnPush=true \
+    --region "$AWS_REGION" &gt;/dev/null
+  echo "created"
+fi
+
+ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+
+# 2. ECS cluster
+log "Ensuring ECS cluster: $ECS_CLUSTER"
+if aws ecs describe-clusters --clusters "$ECS_CLUSTER" \
+     --region "$AWS_REGION" \
+     --query 'clusters[?status==`ACTIVE`]' --output text | grep -q "$ECS_CLUSTER"; then
+  echo "already exists"
+else
+  aws ecs create-cluster --cluster-name "$ECS_CLUSTER" \
+    --region "$AWS_REGION" &gt;/dev/null
+  echo "created"
+fi
+
+# 3. ECS task execution role
+log "Ensuring IAM role: $EXEC_ROLE_NAME"
+if aws iam get-role --role-name "$EXEC_ROLE_NAME" &gt;/dev/null 2&gt;&amp;1; then
+  echo "already exists"
+else
+  aws iam create-role \
+    --role-name "$EXEC_ROLE_NAME" \
+    --assume-role-policy-document '{
+      "Version":"2012-10-17",
+      "Statement":[{
+        "Effect":"Allow",
+        "Principal":{"Service":"ecs-tasks.amazonaws.com"},
+        "Action":"sts:AssumeRole"
+      }]
+    }' &gt;/dev/null
+  aws iam attach-role-policy \
+    --role-name "$EXEC_ROLE_NAME" \
+    --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  echo "created"
+fi
+EXEC_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/${EXEC_ROLE_NAME}"
+
+# 4. Task definition file
+log "Writing task definition: $TASK_DEF_FILE"
+mkdir -p "$(dirname "$TASK_DEF_FILE")"
+cat &gt; "$TASK_DEF_FILE" &lt;&lt;JSON
+{
+  "family": "${ECS_TASK_FAMILY}",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "${EXEC_ROLE_ARN}",
+  "containerDefinitions": [
+    {
+      "name": "${CONTAINER_NAME}",
+      "image": "PLACEHOLDER",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": ${CONTAINER_PORT}, "protocol": "tcp" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/${ECS_TASK_FAMILY}",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "ecs",
+          "awslogs-create-group": "true"
+        }
+      }
+    }
+  ]
+}
+JSON
+echo "written"
+
+log "Registering task definition"
+aws ecs register-task-definition \
+  --cli-input-json "file://${TASK_DEF_FILE}" \
+  --region "$AWS_REGION" &gt;/dev/null
+echo "registered family: $ECS_TASK_FAMILY"
+
+# 5. ECS service
+log "Ensuring ECS service: $ECS_SERVICE"
+if aws ecs describe-services \
+     --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+     --region "$AWS_REGION" \
+     --query 'services[?status==`ACTIVE`]' --output text | grep -q "$ECS_SERVICE"; then
+  echo "already exists"
+else
+  aws ecs create-service \
+    --cluster "$ECS_CLUSTER" \
+    --service-name "$ECS_SERVICE" \
+    --task-definition "$ECS_TASK_FAMILY" \
+    --desired-count 1 \
+    --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[${VPC_SUBNETS}],securityGroups=[${VPC_SECURITY_GROUPS}],assignPublicIp=ENABLED}" \
+    --region "$AWS_REGION" &gt;/dev/null
+  echo "created"
+fi
+
+# 6. GitHub OIDC provider
+log "Ensuring GitHub OIDC provider"
+OIDC_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+if aws iam list-open-id-connect-providers \
+     --query "OpenIDConnectProviderList[?Arn=='${OIDC_ARN}'].Arn" \
+     --output text | grep -q .; then
+  echo "already exists"
+else
+  aws iam create-open-id-connect-provider \
+    --url https://token.actions.githubusercontent.com \
+    --client-id-list sts.amazonaws.com \
+    --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1 &gt;/dev/null
+  echo "created"
+fi
+
+# 7. GitHub Actions deploy role (OIDC trust)
+log "Ensuring deploy role: $OIDC_ROLE_NAME"
+TRUST_FILE="$(mktemp)"
+cat &gt; "$TRUST_FILE" &lt;&lt;JSON
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "${OIDC_ARN}"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:${GITHUB_ORG}/${GITHUB_REPO}:ref:refs/heads/${GITHUB_BRANCH}"
+        }
+      }
+    }
+  ]
+}
+JSON
+
+if aws iam get-role --role-name "$OIDC_ROLE_NAME" &gt;/dev/null 2&gt;&amp;1; then
+  echo "already exists — updating trust policy"
+  aws iam update-assume-role-policy \
+    --role-name "$OIDC_ROLE_NAME" \
+    --policy-document "file://${TRUST_FILE}"
+else
+  aws iam create-role \
+    --role-name "$OIDC_ROLE_NAME" \
+    --assume-role-policy-document "file://${TRUST_FILE}" &gt;/dev/null
+  echo "created"
+fi
+rm -f "$TRUST_FILE"
+
+DEPLOY_POLICY_FILE="$(mktemp)"
+cat &gt; "$DEPLOY_POLICY_FILE" &lt;&lt;JSON
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRAuth",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRPushPull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT_ID}:repository/${ECR_REPO}"
+    },
+    {
+      "Sid": "ECSRegisterAndDeploy",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:DescribeTaskDefinition",
+        "ecs:UpdateService",
+        "ecs:DescribeServices"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PassRoleToECS",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::${AWS_ACCOUNT_ID}:role/${EXEC_ROLE_NAME}",
+        "arn:aws:iam::${AWS_ACCOUNT_ID}:role/ecsTaskRole"
+      ]
+    }
+  ]
+}
+JSON
+
+aws iam put-role-policy \
+  --role-name "$OIDC_ROLE_NAME" \
+  --policy-name GitHubActionsECSDeploy \
+  --policy-document "file://${DEPLOY_POLICY_FILE}"
+rm -f "$DEPLOY_POLICY_FILE"
+
+DEPLOY_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/${OIDC_ROLE_NAME}"
+
+# 8. Summary
+cat &lt;&lt;SUMMARY
+
+================================================================
+  Setup complete
+================================================================
+
+Paste these into .github/workflows/aws.yml:
+
+env:
+  AWS_REGION: ${AWS_REGION}
+  ECR_REPOSITORY: ${ECR_REPO}
+  ECS_SERVICE: ${ECS_SERVICE}
+  ECS_CLUSTER: ${ECS_CLUSTER}
+  ECS_TASK_DEFINITION: ${TASK_DEF_FILE}
+  CONTAINER_NAME: ${CONTAINER_NAME}
+
+And in the "Configure AWS credentials (OIDC)" step:
+
+  role-to-assume: ${DEPLOY_ROLE_ARN}
+
+ECR image URI: ${ECR_URI}
+================================================================
+SUMMARY</code></pre>
+
+    <!-- ================= TASK DEF ================= -->
+    <h2 id="taskdef">Task definition — <code>.aws/task-definition.json</code></h2>
+    <span class="file-tag">.aws/task-definition.json</span>
+<pre><code>{
+  "family": "my-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "my-container",
+      "image": "PLACEHOLDER",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 80, "protocol": "tcp" }
+      ]
+    }
+  ]
+}</code></pre>
+    <div class="callout warn">
+      Nilai <code>name</code> mesti sepadan dengan <code>CONTAINER_NAME</code> dalam workflow.
+    </div>
+
+    <!-- ================= DOCKERFILE ================= -->
+    <h2 id="dockerfile">Dockerfile (contoh)</h2>
+    <span class="file-tag">Dockerfile</span>
+<pre><code># ---- Build stage ----
+FROM node:20-alpine AS build
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY . .
+
+# ---- Runtime stage ----
+FROM node:20-alpine AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=80
+
+COPY --from=build /app ./
+
+EXPOSE 80
+CMD ["node", "server.js"]</code></pre>
+
+    <h3 id="serverjs">server.js</h3>
+    <span class="file-tag">server.js</span>
+<pre><code>const http = require("http");
+const port = process.env.PORT || 80;
+
+http.createServer((req, res) =&gt; {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Hello from ECS\n");
+}).listen(port, () =&gt; console.log(`Listening on ${port}`));</code></pre>
+
+    <h3>Local build test</h3>
+    <pre><code>docker build -t my-app:local .
+docker run --rm -p 8080:80 my-app:local</code></pre>
+
+    <!-- ================= IGNORE ================= -->
+    <h2 id="ignore">Ignore files</h2>
+
+    <span class="file-tag">.dockerignore</span>
+<pre><code>.git
+.github
+.aws
+node_modules
+npm-debug.log
+Dockerfile
+deploy.sh
+*.md</code></pre>
+
+    <span class="file-tag">.gitignore (additions)</span>
+<pre><code># Node
+node_modules/
+npm-debug.log*
+
+# Env
+.env
+.env.*
+
+# AWS
+.aws/credentials
+.aws/config
+*.pem
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/</code></pre>
+
+    <!-- ================= IAM ================= -->
+    <h2 id="iam">IAM — policy untuk deploy role</h2>
+    <p>Digunakan oleh kedua-dua pengguna IAM (fallback) dan role OIDC. Gantikan <code>YOUR_ACCOUNT_ID</code>, region, dan nama.</p>
+<pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRAuth",
+      "Effect": "Allow",
+      "Action": ["ecr:GetAuthorizationToken"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRPushPull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": "arn:aws:ecr:us-east-2:YOUR_ACCOUNT_ID:repository/my-ecr-repo"
+    },
+    {
+      "Sid": "ECSRegisterAndDeploy",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:DescribeTaskDefinition",
+        "ecs:UpdateService",
+        "ecs:DescribeServices"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PassRoleToECS",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
+        "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskRole"
+      ]
+    }
+  ]
+}</code></pre>
+
+    <h3>Access-key fallback: cipta user</h3>
+    <pre><code>aws iam create-user --user-name github-actions-ecs-deploy
+aws iam put-user-policy \
+  --user-name github-actions-ecs-deploy \
+  --policy-name GitHubActionsECSDeploy \
+  --policy-document file://github-actions-policy.json
+aws iam create-access-key --user-name github-actions-ecs-deploy</code></pre>
+
+    <!-- ================= OIDC ================= -->
+    <h2 id="oidc">OIDC provider + trust policy</h2>
+
+    <h3>Cipta provider (sekali per akaun)</h3>
+    <pre><code>aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1</code></pre>
+
+    <h3>Trust policy</h3>
+    <span class="file-tag">trust.json</span>
+<pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::YOUR_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:OWNER/REPO:ref:refs/heads/gh-pages"
+        }
+      }
+    }
+  ]
+}</code></pre>
+
+    <pre><code>aws iam create-role \
+  --role-name github-actions-ecs-deploy-oidc \
+  --assume-role-policy-document file://trust.json
+
+aws iam put-role-policy \
+  --role-name github-actions-ecs-deploy-oidc \
+  --policy-name GitHubActionsECSDeploy \
+  --policy-document file://github-actions-policy.json</code></pre>
+
+    <!-- ================= ECS ROLES ================= -->
+    <h2 id="ecsroles">ECS task execution role</h2>
+    <pre><code>aws iam create-role \
+  --role-name ecsTaskExecutionRole \
+  --assume-role-policy-document '{
+    "Version":"2012-10-17",
+    "Statement":[{
+      "Effect":"Allow",
+      "Principal":{"Service":"ecs-tasks.amazonaws.com"},
+      "Action":"sts:AssumeRole"
+    }]
+  }'
+
+aws iam attach-role-policy \
+  --role-name ecsTaskExecutionRole \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy</code></pre>
+
+    <!-- ================= README ================= -->
+    <h2 id="readme">README § Deployment</h2>
+    <p>Letak di bawah heading <code>## Deployment</code> dalam <code>README.md</code>.</p>
+
+    <div class="panel">
+      <h3 style="margin-top:0">How it works</h3>
+      <div class="flow">
+        <span>push to gh-pages</span> <em>→</em>
+        <span>assume AWS role (OIDC)</span> <em>→</em>
+        <span>docker build</span> <em>→</em>
+        <span>push to ECR</span> <em>→</em>
+        <span>render task def</span> <em>→</em>
+        <span>deploy to ECS</span> <em>→</em>
+        <span>wait for stability</span>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>File</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>.github/workflows/aws.yml</code></td><td>The deploy workflow.</td></tr>
+        <tr><td><code>.aws/task-definition.json</code></td><td>Fargate task definition template. <code>image</code> is a <code>PLACEHOLDER</code>.</td></tr>
+        <tr><td><code>deploy.sh</code></td><td>Idempotent AWS bootstrap. Safe to re-run.</td></tr>
+        <tr><td><code>Dockerfile</code></td><td>Example multi-stage Node 20 image.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Configuration reference</h3>
+    <table>
+      <thead><tr><th>Workflow env var</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>AWS_REGION</code></td><td>AWS region for ECR and ECS.</td></tr>
+        <tr><td><code>ECR_REPOSITORY</code></td><td>ECR repository name (not the full URI).</td></tr>
+        <tr><td><code>ECS_SERVICE</code></td><td>ECS service name.</td></tr>
+        <tr><td><code>ECS_CLUSTER</code></td><td>ECS cluster name.</td></tr>
+        <tr><td><code>ECS_TASK_DEFINITION</code></td><td>Path to the task definition JSON.</td></tr>
+        <tr><td><code>CONTAINER_NAME</code></td><td>Must match <code>containerDefinitions[].name</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Deploying a new version</h3>
+    <pre><code>git push origin gh-pages</code></pre>
+
+    <h3>Secrets</h3>
+    <p>Dengan OIDC, <strong>tiada AWS secret diperlukan</strong>. Untuk fallback, tambah <code>AWS_ACCESS_KEY_ID</code> dan <code>AWS_SECRET_ACCESS_KEY</code> di <em>Settings → Secrets and variables → Actions</em>.</p>
+
+    <!-- ================= CONTRIBUTING ================= -->
+    <h2 id="contributing">CONTRIBUTING.md</h2>
+
+    <h3>Local development</h3>
+    <pre><code>npm ci
+npm start
+
+# atau, test container seperti ECS:
+docker build -t my-app:local .
+docker run --rm -p 8080:80 my-app:local</code></pre>
+
+    <h3>Branching model</h3>
+    <table>
+      <thead><tr><th>Branch</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>gh-pages</code></td><td>Deploy branch. Setiap push trigger workflow.</td></tr>
+        <tr><td><code>main</code></td><td>Development branch.</td></tr>
+        <tr><td><code>feature/*</code>, <code>fix/*</code>, <code>chore/*</code></td><td>Topic branches.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Review checklist</h3>
+    <ul class="checklist">
+      <li>Tests pass locally.</li>
+      <li><code>docker build</code> succeeds.</li>
+      <li>Perubahan pada workflow / task def / deploy.sh diuji pada non-prod AWS.</li>
+      <li>Tiada secrets, ARN, atau account ID di-commit.</li>
+      <li>README / docs dikemas kini jika behaviour berubah.</li>
+    </ul>
+
+    <h3>Rules</h3>
+    <ul>
+      <li>Jangan push terus ke <code>gh-pages</code> tanpa review kecuali hotfix.</li>
+      <li>Jangan commit AWS credentials. Guna OIDC.</li>
+      <li>Jika ubah OIDC trust policy, koordinasi dengan pemilik akaun AWS.</li>
+      <li>Rollback = re-run workflow lama, bukan <code>git revert</code> + push.</li>
+    </ul>
+
+    <!-- ================= BADGE ================= -->
+    <h2 id="badge">Status badge</h2>
+    <pre><code>[![Deploy to Amazon ECS](https://github.com/OWNER/REPO/actions/workflows/aws.yml/badge.svg?branch=gh-pages)](https://github.com/OWNER/REPO/actions/workflows/aws.yml)</code></pre>
+
+    <!-- ================= PR ================= -->
+    <h2 id="pr">PR description</h2>
+    <div class="panel">
+      <h3 style="margin-top:0">Add ECS deployment workflow with setup instructions</h3>
+      <h4>Summary</h4>
+      <p>Adds a GitHub Actions workflow that builds a Docker image, pushes it to Amazon ECR, and rolls out a new task definition to Amazon ECS on every push to <code>gh-pages</code>. Includes an idempotent AWS setup script and a task definition template.</p>
+
+      <h4>Files</h4>
+      <table>
+        <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>.github/workflows/aws.yml</code></td><td>Deploy workflow (OIDC).</td></tr>
+          <tr><td><code>.aws/task-definition.json</code></td><td>Fargate task definition template.</td></tr>
+          <tr><td><code>deploy.sh</code></td><td>Idempotent AWS bootstrap.</td></tr>
+          <tr><td><code>Dockerfile</code>, <code>server.js</code></td><td>Example app image.</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Setup checklist (before merging)</h4>
+      <ul class="checklist">
+        <li>Run <code>./deploy.sh</code>.</li>
+        <li>Paste printed <code>env:</code> block into <code>aws.yml</code>.</li>
+        <li>Paste printed <code>role-to-assume</code> ARN.</li>
+        <li>Confirm <code>permissions: id-token: write</code>.</li>
+        <li>Verify subnets have NAT/IGW route.</li>
+        <li>Verify SG allows inbound on container port.</li>
+      </ul>
+
+      <h4>Testing</h4>
+      <ul class="checklist">
+        <li><code>./deploy.sh</code> runs clean end-to-end.</li>
+        <li>Push triggers the workflow without errors.</li>
+        <li>ECS service reaches steady state.</li>
+        <li>Logs appear in <code>/ecs/&lt;task-family&gt;</code>.</li>
+      </ul>
+
+      <h4>Breaking changes</h4>
+      <p>None. This is additive.</p>
+    </div>
+
+    <!-- ================= CHANGELOG ================= -->
+    <h2 id="changelog">CHANGELOG entry</h2>
+<pre><code>## [Unreleased]
+
+### Added
+- GitHub Actions workflow (`aws.yml`) that builds a Docker image, pushes it to
+  Amazon ECR, and deploys a new task definition to Amazon ECS on pushes to
+  `gh-pages`.
+- `deploy.sh`, an idempotent bootstrap script that provisions the ECR repository,
+  ECS cluster and service, ECS task execution role, GitHub OIDC provider, and
+  the OIDC deploy role.
+- `.aws/task-definition.json` template (Fargate, single container, `awslogs`
+  driver) rendered per commit by the workflow.
+- Example multi-stage `Dockerfile` and `server.js` for the sample Node 20 image.
+
+### Security
+- Deployment uses GitHub OIDC (`id-token: write`) and
+  `sts:AssumeRoleWithWebIdentity`; no long-lived AWS access keys are stored in
+  GitHub secrets.</code></pre>
+
+    <!-- ================= RELEASE ================= -->
+    <h2 id="release">Release notes</h2>
+
+    <h3>Full version</h3>
+    <div class="panel">
+      <h4 style="margin-top:0">v0.x.0 — ECS deployment pipeline</h4>
+      <p><strong>Highlights</strong></p>
+      <ul>
+        <li>Push-to-deploy to Amazon ECS dari <code>gh-pages</code>.</li>
+        <li>Keyless AWS auth dengan GitHub OIDC.</li>
+        <li>One-shot bootstrap <code>./deploy.sh</code>.</li>
+      </ul>
+      <p><strong>New files</strong></p>
+      <ul>
+        <li><code>.github/workflows/aws.yml</code></li>
+        <li><code>.aws/task-definition.json</code></li>
+        <li><code>deploy.sh</code></li>
+        <li><code>Dockerfile</code>, <code>server.js</code></li>
+      </ul>
+      <p><strong>Upgrade notes</strong></p>
+      <ul>
+        <li>Jalankan <code>./deploy.sh</code> sekali per akaun/region sebelum workflow boleh berjaya.</li>
+        <li>Edit CONFIG block, tampal <code>env:</code> dan <code>role-to-assume</code> ke dalam workflow.</li>
+        <li>Padam access key lama selepas OIDC berjaya.</li>
+      </ul>
+      <p><strong>Known limitations</strong></p>
+      <ul>
+        <li>Single-container task definition.</li>
+        <li>Tiada ALB / target group.</li>
+        <li><code>deploy.sh</code> perlukan credentials dengan kebenaran IAM.</li>
+      </ul>
+    </div>
+
+    <h3>Short version (GitHub Release body)</h3>
+<pre><code>### ECS deployment pipeline
+
+Push-to-deploy to Amazon ECS from `gh-pages`, authenticated via GitHub OIDC —
+no long-lived AWS keys.
+
+**Setup**
+1. Edit the CONFIG block in `deploy.sh`.
+2. Run `./deploy.sh`.
+3. Paste the printed `env:` block and `role-to-assume` ARN into `.github/workflows/aws.yml`.
+4. Push to `gh-pages`.
+
+**Breaking changes:** none</code></pre>
+
+    <!-- ================= TROUBLESHOOT ================= -->
+    <h2 id="troubleshoot">Troubleshooting</h2>
+    <table>
+      <thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>Not authorized to perform sts:AssumeRoleWithWebIdentity</code></td>
+          <td>Trust policy <code>sub</code> tidak sepadan dengan repo/branch. Jalankan semula <code>deploy.sh</code> selepas fix <code>GITHUB_ORG</code> / <code>GITHUB_REPO</code> / <code>GITHUB_BRANCH</code>.</td>
+        </tr>
+        <tr>
+          <td><code>denied: requested access to the resource is denied</code> (ECR push)</td>
+          <td>ARN dalam <code>ECRPushPull</code> tidak sepadan. Semak <code>ECR_REPO</code>.</td>
+        </tr>
+        <tr>
+          <td>ECS task mati serta-merta</td>
+          <td>Semak CloudWatch Logs di <code>/ecs/&lt;task-family&gt;</code>.</td>
+        </tr>
+        <tr>
+          <td>Service tidak stabilize</td>
+          <td>Subnet tiada route ke NAT/IGW. Semak <code>VPC_SUBNETS</code> dan <code>VPC_SECURITY_GROUPS</code>.</td>
+        </tr>
+        <tr>
+          <td><code>CannotPullContainerError</code></td>
+          <td>Execution role tiada <code>AmazonECSTaskExecutionRolePolicy</code>, atau image URI salah.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- ================= ROLLBACK ================= -->
+    <h2 id="rollback">Rollback</h2>
+    <p>Re-run workflow dari commit sebelumnya dalam tab <strong>Actions</strong>, atau secara manual:</p>
+<pre><code>aws ecs update-service \
+  --cluster "$ECS_CLUSTER" \
+  --service "$ECS_SERVICE" \
+  --task-definition "$ECS_TASK_FAMILY:PREVIOUS_REVISION" \
+  --region "$AWS_REGION"</code></pre>
+
+    <p>Senarai revisi:</p>
+<pre><code>aws ecs list-task-definitions \
+  --family-prefix "$ECS_TASK_FAMILY" \
+  --region "$AWS_REGION"</code></pre>
+
+    <!-- ================= COMMIT ================= -->
+    <h2 id="commit">Commit commands</h2>
+<pre><code>git add .
+git commit -m "Add ECS deployment workflow with setup instructions" \
+           -m "Adds a GitHub Actions workflow that builds a Docker image, pushes it
+to ECR, and rolls out a new ECS task definition on pushes to gh-pages. Includes
+an idempotent AWS bootstrap script (deploy.sh), a Fargate task definition
+template, an OIDC trust + deploy role, README deployment section, CONTRIBUTING
+guide, and CHANGELOG entry. No long-lived AWS credentials are stored in GitHub."
+git push origin gh-pages</code></pre>
+
+    <h3>Split commits (Conventional Commits)</h3>
+<pre><code># 1. Workflow
+git add .github/workflows/aws.yml
+git commit -m "ci(ecs): add ECS deploy workflow" \
+           -m "Adds a GitHub Actions workflow that builds a Docker image, pushes it to ECR, and rolls out a new ECS task definition on pushes to gh-pages."
+
+# 2. Task definition template
+git add .aws/task-definition.json
+git commit -m "chore(ecs): add task definition template" \
+           -m "Fargate task definition with awslogs, a single container, and PLACEHOLDER image that the workflow renders per commit SHA."
+
+# 3. Setup script
+git add deploy.sh
+git commit -m "chore(deploy): add idempotent AWS setup script" \
+           -m "Provisions ECR, ECS cluster and service, execution role, GitHub OIDC provider, and deploy role. Prints the values needed for aws.yml."</code></pre>
+
+    <hr>
+
+    <h2>Semua dalam susunan</h2>
+    <p>Anda kini ada, dari hujung ke hujung:</p>
+    <ol>
+      <li><strong><code>aws.yml</code></strong> — workflow deploy (OIDC).</li>
+      <li><strong><code>deploy.sh</code></strong> — bootstrap AWS idempotent.</li>
+      <li><strong><code>.aws/task-definition.json</code></strong> — Fargate task definition.</li>
+      <li><strong><code>Dockerfile</code> + <code>server.js</code></strong> — contoh aplikasi.</li>
+      <li><strong>IAM policy</strong> — ECR push + ECS deploy + OIDC trust.</li>
+      <li><strong>Commit messages</strong> — plain dan Conventional Commits.</li>
+      <li><strong>PR description</strong> — dengan checklist testing.</li>
+      <li><strong>CHANGELOG entry</strong> — format Keep a Changelog.</li>
+      <li><strong>Release notes</strong> — versi pendek dan penuh.</li>
+      <li><strong>README § Deployment</strong> — self-documenting.</li>
+      <li><strong>Status badge</strong>.</li>
+      <li><strong>CONTRIBUTING.md</strong>.</li>
+    </ol>
+
+    <div class="footer">
+      ECS Deployment Pipeline — single-file reference. Buka di pelayar, atau simpan sebagai <code>index.html</code>.
+    </div>
+
+  </main>
+</div>
+
+<script>
+  // Highlight active section in sidebar
+  const links = document.querySelectorAll('.sidebar a');
+  const targets = [...links].map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.style.background = '');
+        const active = [...links].find(l => l.getAttribute('href') === '#' + e.target.id);
+        if (active) active.style.background = 'var(--panel-2)';
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+  targets.forEach(t => obs.observe(t));
+</script>
+
+</body>
+</html>
+```
+
+### Cara guna
+
+1. Simpan sebagai `index.html`.
+2. Buka dalam pelayar — navigasi sidebar di kiri, kandungan penuh di kanan.
+3. Semua blok kod boleh disalin terus.
+4. Responsif — di skrin kecil, sidebar bertukar jadi bar navigasi di atas.
+
+### Apa yang ada di dalam
+
+| Bahagian | Kandungan |
+|---|---|
+| Getting started | Overview, file tree, flow diagram, prerequisites, setup steps |
+| Artifacts | `aws.yml`, `deploy.sh`, `task-definition.json`, `Dockerfile`, `server.js`, `.dockerignore`, `.gitignore` |
+| AWS | IAM policy, OIDC trust, ECS task execution role |
+| Documentation | README § Deployment, CONTRIBUTING.md, status badge |
+| Release | PR description, CHANGELOG, release notes (short + full) |
+| Operations | Troubleshooting table, rollback, commit commands |
+
+Mahu saya tambah **dark/light toggle** atau **butang "Copy"** untuk setiap blok kod?
+Berikut fail HTML yang dikemas kini dengan **dark/light toggle** dan **butang Copy** untuk setiap blok kod. Simpan sebagai `index.html` dan buka dalam pelayar.
+
+```html
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECS Deployment Pipeline — Full Reference</title>
+<script>
+  // Apply theme before paint to avoid flash
+  (function () {
+    try {
+      var t = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
+<style>
+  /* ---------- Theme tokens ---------- */
+  :root,
+  [data-theme="dark"] {
+    --bg: #0f1117;
+    --panel: #161923;
+    --panel-2: #1c2030;
+    --border: #262b3d;
+    --text: #e6e8ee;
+    --muted: #9aa0b4;
+    --accent: #7aa2f7;
+    --accent-2: #bb9af7;
+    --green: #9ece6a;
+    --red: #f7768e;
+    --yellow: #e0af68;
+    --code-bg: #0b0d13;
+    --code-text: #c8d3f5;
+    --hover-row: rgba(122,162,247,.04);
+    --radius: 10px;
+    --maxw: 1100px;
+    --shadow: 0 0 0 transparent;
+  }
+  [data-theme="light"] {
+    --bg: #f6f7fb;
+    --panel: #ffffff;
+    --panel-2: #eef0f6;
+    --border: #d8dce6;
+    --text: #1a1d29;
+    --muted: #5c6378;
+    --accent: #3b5bdb;
+    --accent-2: #7048e8;
+    --green: #2f9e44;
+    --red: #e03131;
+    --yellow: #d9480f;
+    --code-bg: #f2f4f8;
+    --code-text: #24292f;
+    --hover-row: rgba(59,91,219,.05);
+    --shadow: 0 1px 3px rgba(20,24,40,.05);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    transition: background .2s ease, color .2s ease;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, kbd { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+
+  /* ---------- Layout ---------- */
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    max-width: 1400px;
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: static !important; height: auto !important; border-right: none !important; border-bottom: 1px solid var(--border); }
+  }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 22px 18px;
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+    transition: background .2s ease, border-color .2s ease;
+  }
+  .sidebar h2 {
+    font-size: 12px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 18px 0 8px;
+  }
+  .sidebar a {
+    display: block;
+    padding: 6px 10px;
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 14px;
+    opacity: .85;
+  }
+  .sidebar a:hover { background: var(--panel-2); opacity: 1; text-decoration: none; }
+  .brand {
+    font-weight: 700;
+    font-size: 16px;
+    margin-bottom: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .brand-sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-bottom: 14px;
+    font-family: inherit;
+    transition: background .15s, border-color .15s, color .15s, transform .05s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .theme-toggle:active { transform: scale(.97); }
+
+  /* ---------- Main ---------- */
+  main { padding: 40px 42px 80px; max-width: var(--maxw); }
+  h1 { font-size: 30px; margin: 0 0 8px; letter-spacing: -.02em; }
+  h2 {
+    font-size: 22px;
+    margin: 44px 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    scroll-margin-top: 20px;
+  }
+  h3 { font-size: 17px; margin: 26px 0 10px; color: var(--accent); }
+  h4 { font-size: 15px; margin: 20px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  p { color: var(--text); }
+  .lead { color: var(--muted); font-size: 16px; margin-top: 0; }
+
+  /* ---------- Code ---------- */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.55;
+    margin: 0;
+    transition: background .2s ease, border-color .2s ease;
+  }
+  pre code { color: var(--code-text); }
+  :not(pre) > code {
+    background: var(--panel-2);
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-size: 13px;
+    color: var(--accent-2);
+  }
+
+  /* Wrapper + copy button */
+  .pre-wrap {
+    position: relative;
+    margin: 14px 0;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s, background .15s, color .15s, border-color .15s;
+    font-family: inherit;
+    letter-spacing: .02em;
+    z-index: 2;
+  }
+  .pre-wrap:hover .copy-btn,
+  .pre-wrap:focus-within .copy-btn { opacity: 1; }
+  .copy-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .copy-btn.copied {
+    background: var(--green);
+    color: #fff;
+    border-color: var(--green);
+    opacity: 1;
+  }
+
+  .file-tag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 5px 5px 0 0;
+    background: var(--panel-2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    margin-bottom: -1px;
+    font-family: ui-monospace, monospace;
+    position: relative;
+    z-index: 1;
+  }
+  .file-tag + .pre-wrap { margin-top: 0; }
+  .file-tag + .pre-wrap > pre { border-top-left-radius: 0; }
+
+  /* ---------- Panels / cards ---------- */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin: 14px 0;
+    box-shadow: var(--shadow);
+    transition: background .2s ease, border-color .2s ease;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 14px 0;
+  }
+  .card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    transition: background .2s ease, border-color .2s ease;
+  }
+  .card h5 { margin: 0 0 6px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+  .card p { margin: 0; font-size: 13px; color: var(--muted); }
+
+  /* ---------- Flow ---------- */
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+  .flow span {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    padding: 6px 11px;
+    border-radius: 20px;
+  }
+  .flow em { color: var(--muted); font-style: normal; }
+
+  /* ---------- Tables ---------- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  tr:hover td { background: var(--hover-row); }
+
+  /* ---------- Pills ---------- */
+  .pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    vertical-align: middle;
+  }
+  .pill-green { background: rgba(158,206,106,.15); color: var(--green); }
+  .pill-red { background: rgba(247,118,142,.15); color: var(--red); }
+  .pill-yellow { background: rgba(224,175,104,.15); color: var(--yellow); }
+  .pill-blue { background: rgba(122,162,247,.15); color: var(--accent); }
+
+  /* ---------- Checklist ---------- */
+  ul.checklist { list-style: none; padding-left: 0; }
+  ul.checklist li { padding: 4px 0 4px 26px; position: relative; }
+  ul.checklist li::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 9px;
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--muted);
+    border-radius: 4px;
+  }
+
+  /* ---------- Callouts ---------- */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: rgba(122,162,247,.07);
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  .callout.warn { border-color: var(--yellow); background: rgba(224,175,104,.08); }
+  .callout.danger { border-color: var(--red); background: rgba(247,118,142,.08); }
+  .callout strong { color: var(--text); }
+  .callout .pre-wrap { margin-top: 8px; }
+
+  /* ---------- Mobile top nav ---------- */
+  .topnav { display: none; }
+  @media (max-width: 900px) {
+    .topnav {
+      display: block;
+      position: sticky;
+      top: 0;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 14px;
+      z-index: 10;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .topnav a { margin-right: 12px; font-size: 13px; }
+    main { padding: 24px 20px 60px; }
+  }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+  .footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="topnav">
+  <a href="#overview">Overview</a>
+  <a href="#workflow">Workflow</a>
+  <a href="#deploysh">deploy.sh</a>
+  <a href="#taskdef">Task Def</a>
+  <a href="#dockerfile">Dockerfile</a>
+  <a href="#iam">IAM</a>
+  <a href="#oidc">OIDC</a>
+  <a href="#readme">README</a>
+  <a href="#contributing">Contributing</a>
+  <a href="#pr">PR</a>
+  <a href="#changelog">CHANGELOG</a>
+  <a href="#rollback">Rollback</a>
+</div>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">ECS Deploy Pipeline</div>
+    <div class="brand-sub">Full reference — workflow, IAM, docs</div>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle theme">
+      <span id="themeIcon">☀️</span><span id="themeLabel">Light</span>
+    </button>
+
+    <h2>Getting started</h2>
+    <a href="#overview">Overview</a>
+    <a href="#tree">File tree</a>
+    <a href="#flow">Flow diagram</a>
+    <a href="#prereq">Prerequisites</a>
+    <a href="#setup">First-time setup</a>
+
+    <h2>Artifacts</h2>
+    <a href="#workflow">aws.yml</a>
+    <a href="#deploysh">deploy.sh</a>
+    <a href="#taskdef">task-definition.json</a>
+    <a href="#dockerfile">Dockerfile</a>
+    <a href="#serverjs">server.js</a>
+    <a href="#ignore">.dockerignore / .gitignore</a>
+
+    <h2>AWS</h2>
+    <a href="#iam">IAM policy</a>
+    <a href="#oidc">OIDC trust</a>
+    <a href="#ecsroles">ECS roles</a>
+
+    <h2>Documentation</h2>
+    <a href="#readme">README § Deployment</a>
+    <a href="#contributing">CONTRIBUTING.md</a>
+    <a href="#badge">Status badge</a>
+
+    <h2>Release</h2>
+    <a href="#pr">PR description</a>
+    <a href="#changelog">CHANGELOG</a>
+    <a href="#release">Release notes</a>
+
+    <h2>Operations</h2>
+    <a href="#troubleshoot">Troubleshooting</a>
+    <a href="#rollback">Rollback</a>
+    <a href="#commit">Commit commands</a>
+  </aside>
+
+  <main>
+
+    <h1>ECS Deployment Pipeline</h1>
+    <p class="lead">Push-to-deploy to Amazon ECS from <code>gh-pages</code> via GitHub Actions and OIDC. Everything you need — workflow, IAM, bootstrap script, docs, and release notes — in one page.</p>
+
+    <div class="grid">
+      <div class="card"><h5>Auth</h5><p>GitHub OIDC — no long-lived AWS keys stored in GitHub.</p></div>
+      <div class="card"><h5>Compute</h5><p>ECS on Fargate, single container, awslogs driver.</p></div>
+      <div class="card"><h5>Registry</h5><p>Amazon ECR, image tagged with commit SHA.</p></div>
+      <div class="card"><h5>Trigger</h5><p>Push to <code>gh-pages</code>.</p></div>
+    </div>
+
+    <h2 id="overview">Overview</h2>
+    <p>Setiap <em>push</em> ke cawangan <code>gh-pages</code> akan:</p>
+    <ol>
+      <li>Mengambil kredential AWS sementara melalui GitHub OIDC.</li>
+      <li>Membina imej Docker dan menolaknya ke Amazon ECR dengan tag <code>${{ github.sha }}</code>.</li>
+      <li>Meletakkan imej baharu ke dalam task definition ECS.</li>
+      <li>Mendaftar task definition dan mengemas kini ECS service.</li>
+      <li>Menunggu service stabil sebelum tamat.</li>
+    </ol>
+
+    <h2 id="tree">File tree</h2>
+    <pre><code>.
+├── .aws/
+│   └── task-definition.json          # Fargate task definition template
+├── .github/
+│   └── workflows/
+│       └── aws.yml                   # Build → ECR → ECS deploy
+├── docs/
+│   └── deployment.md                 # (optional) README § Deployment split out
+├── Dockerfile                        # Multi-stage Node 20 image (example)
+├── server.js                         # Example app
+├── deploy.sh                         # Idempotent AWS bootstrap
+├── CHANGELOG.md                      # Keep a Changelog
+├── CONTRIBUTING.md
+├── README.md                         # Badge + Deployment section
+├── .dockerignore
+├── .gitignore
+└── package.json</code></pre>
+
+    <h2 id="flow">Flow diagram</h2>
+    <div class="flow">
+      <span>push to <code>gh-pages</code></span> <em>→</em>
+      <span>assume AWS role (OIDC)</span> <em>→</em>
+      <span>docker build</span> <em>→</em>
+      <span>push to ECR (SHA tag)</span> <em>→</em>
+      <span>render task def</span> <em>→</em>
+      <span>register + update service</span> <em>→</em>
+      <span>wait for stability</span>
+    </div>
+
+    <h2 id="prereq">Prerequisites</h2>
+    <ul>
+      <li>AWS CLI v2, authenticated dengan kredential yang boleh mencipta IAM roles, ECR repos, ECS clusters/services, dan OIDC providers.</li>
+      <li>VPC sedia ada dengan:
+        <ul>
+          <li>Dua atau lebih subnet yang mempunyai route ke NAT gateway atau internet gateway.</li>
+          <li>Security group yang membenarkan inbound pada port kontena (atau ALB di hadapan).</li>
+        </ul>
+      </li>
+      <li>Repositori GitHub dengan Actions diaktifkan.</li>
+    </ul>
+
+    <h2 id="setup">First-time setup</h2>
+
+    <h3>1. Edit CONFIG block dalam <code>deploy.sh</code></h3>
+    <pre><code>AWS_REGION="us-east-2"
+ECR_REPO="my-ecr-repo"
+ECS_CLUSTER="my-ecs-cluster"
+ECS_SERVICE="my-ecs-service"
+ECS_TASK_FAMILY="my-task"
+CONTAINER_NAME="my-container"
+CONTAINER_PORT="80"
+
+GITHUB_ORG="OWNER"
+GITHUB_REPO="REPO"
+GITHUB_BRANCH="gh-pages"
+
+VPC_SUBNETS="subnet-xxxxxxxx,subnet-yyyyyyyy"
+VPC_SECURITY_GROUPS="sg-xxxxxxxx"</code></pre>
+
+    <h3>2. Jalankan bootstrap</h3>
+    <pre><code>chmod +x deploy.sh
+./deploy.sh</code></pre>
+    <p>Skrip ini akan mencipta atau mengesahkan:</p>
+    <ul>
+      <li>ECR repository</li>
+      <li>ECS cluster dan service</li>
+      <li><code>ecsTaskExecutionRole</code></li>
+      <li>GitHub OIDC provider (<code>token.actions.githubusercontent.com</code>)</li>
+      <li>Role <code>github-actions-ecs-deploy-oidc</code> dengan kebenaran ECR push + ECS deploy</li>
+    </ul>
+
+    <h3>3. Tampal nilai ke dalam <code>aws.yml</code></h3>
+    <pre><code>env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: my-ecr-repo
+  ECS_SERVICE: my-ecs-service
+  ECS_CLUSTER: my-ecs-cluster
+  ECS_TASK_DEFINITION: .aws/task-definition.json
+  CONTAINER_NAME: my-container
+
+permissions:
+  id-token: write
+  contents: read</code></pre>
+
+    <h3>4. Commit dan push</h3>
+    <pre><code>git add .github/workflows/aws.yml .aws/task-definition.json deploy.sh Dockerfile
+git commit -m "Add ECS deployment workflow with setup instructions"
+git push origin gh-pages</code></pre>
+
+    <h2 id="workflow">Workflow — <code>.github/workflows/aws.yml</code></h2>
+    <p>Gunakan versi OIDC ini. Ia tidak menyimpan access key dalam GitHub secrets.</p>
+    <span class="file-tag">.github/workflows/aws.yml</span>
+<pre><code>name: Deploy to Amazon ECS
+
+on:
+  push:
+    branches: [ "gh-pages" ]
+
+env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: my-ecr-repo
+  ECS_SERVICE: my-ecs-service
+  ECS_CLUSTER: my-ecs-cluster
+  ECS_TASK_DEFINITION: .aws/task-definition.json
+  CONTAINER_NAME: my-container
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::YOUR_ACCOUNT_ID:role/github-actions-ecs-deploy-oidc
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" &gt;&gt; $GITHUB_OUTPUT
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true</code></pre>
+
+    <div class="callout">
+      <strong>Fallback access-key auth.</strong> Jika perlu, gantikan step OIDC dengan:
+      <pre><code>- name: Configure AWS credentials
+  uses: aws-actions/configure-aws-credentials@v4
+  with:
+    aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    aws-region: ${{ env.AWS_REGION }}</code></pre>
+      OIDC tetap lebih disyorkan.
+    </div>
+
+    <h2 id="deploysh">Bootstrap — <code>deploy.sh</code></h2>
+    <p>Skrip idempotent. Selamat dijalankan berulang kali.</p>
+    <span class="file-tag">deploy.sh</span>
+<pre><code>#!/usr/bin/env bash
+#
+# deploy.sh — one-shot setup for the GitHub Actions → Amazon ECS pipeline.
+#
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# CONFIG — edit these
+# ---------------------------------------------------------------------------
+AWS_REGION="us-east-2"
+AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+
+ECR_REPO="my-ecr-repo"
+ECS_CLUSTER="my-ecs-cluster"
+ECS_SERVICE="my-ecs-service"
+ECS_TASK_FAMILY="my-task"
+CONTAINER_NAME="my-container"
+CONTAINER_PORT="80"
+
+GITHUB_ORG="OWNER"
+GITHUB_REPO="REPO"
+GITHUB_BRANCH="gh-pages"
+
+VPC_SUBNETS="subnet-xxxxxxxx,subnet-yyyyyyyy"
+VPC_SECURITY_GROUPS="sg-xxxxxxxx"
+
+OIDC_ROLE_NAME="github-actions-ecs-deploy-oidc"
+EXEC_ROLE_NAME="ecsTaskExecutionRole"
+
+TASK_DEF_FILE=".aws/task-definition.json"
+# ---------------------------------------------------------------------------
+
+log()  { printf "\n\033[1;34m==>\033[0m %s\n" "$*"; }
+
+# 0. Sanity checks
+log "Verifying AWS identity"
+aws sts get-caller-identity &gt;/dev/null
+echo "Account: $AWS_ACCOUNT_ID  Region: $AWS_REGION"
+
+# 1. ECR repository
+log "Ensuring ECR repository: $ECR_REPO"
+if aws ecr describe-repositories --repository-names "$ECR_REPO" \
+     --region "$AWS_REGION" &gt;/dev/null 2&gt;&amp;1; then
+  echo "already exists"
+else
+  aws ecr create-repository \
+    --repository-name "$ECR_REPO" \
+    --image-scanning-configuration scanOnPush=true \
+    --region "$AWS_REGION" &gt;/dev/null
+  echo "created"
+fi
+
+ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+
+# 2. ECS cluster
+log "Ensuring ECS cluster: $ECS_CLUSTER"
+if aws ecs describe-clusters --clusters "$ECS_CLUSTER" \
+     --region "$AWS_REGION" \
+     --query 'clusters[?status==`ACTIVE`]' --output text | grep -q "$ECS_CLUSTER"; then
+  echo "already exists"
+else
+  aws ecs create-cluster --cluster-name "$ECS_CLUSTER" \
+    --region "$AWS_REGION" &gt;/dev/null
+  echo "created"
+fi
+
+# 3. ECS task execution role
+log "Ensuring IAM role: $EXEC_ROLE_NAME"
+if aws iam get-role --role-name "$EXEC_ROLE_NAME" &gt;/dev/null 2&gt;&amp;1; then
+  echo "already exists"
+else
+  aws iam create-role \
+    --role-name "$EXEC_ROLE_NAME" \
+    --assume-role-policy-document '{
+      "Version":"2012-10-17",
+      "Statement":[{
+        "Effect":"Allow",
+        "Principal":{"Service":"ecs-tasks.amazonaws.com"},
+        "Action":"sts:AssumeRole"
+      }]
+    }' &gt;/dev/null
+  aws iam attach-role-policy \
+    --role-name "$EXEC_ROLE_NAME" \
+    --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  echo "created"
+fi
+EXEC_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/${EXEC_ROLE_NAME}"
+
+# 4. Task definition file
+log "Writing task definition: $TASK_DEF_FILE"
+mkdir -p "$(dirname "$TASK_DEF_FILE")"
+cat &gt; "$TASK_DEF_FILE" &lt;&lt;JSON
+{
+  "family": "${ECS_TASK_FAMILY}",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "${EXEC_ROLE_ARN}",
+  "containerDefinitions": [
+    {
+      "name": "${CONTAINER_NAME}",
+      "image": "PLACEHOLDER",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": ${CONTAINER_PORT}, "protocol": "tcp" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/${ECS_TASK_FAMILY}",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "ecs",
+          "awslogs-create-group": "true"
+        }
+      }
+    }
+  ]
+}
+JSON
+echo "written"
+
+log "Registering task definition"
+aws ecs register-task-definition \
+  --cli-input-json "file://${TASK_DEF_FILE}" \
+  --region "$AWS_REGION" &gt;/dev/null
+echo "registered family: $ECS_TASK_FAMILY"
+
+# 5. ECS service
+log "Ensuring ECS service: $ECS_SERVICE"
+if aws ecs describe-services \
+     --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+     --region "$AWS_REGION" \
+     --query 'services[?status==`ACTIVE`]' --output text | grep -q "$ECS_SERVICE"; then
+  echo "already exists"
+else
+  aws ecs create-service \
+    --cluster "$ECS_CLUSTER" \
+    --service-name "$ECS_SERVICE" \
+    --task-definition "$ECS_TASK_FAMILY" \
+    --desired-count 1 \
+    --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[${VPC_SUBNETS}],securityGroups=[${VPC_SECURITY_GROUPS}],assignPublicIp=ENABLED}" \
+    --region "$AWS_REGION" &gt;/dev/null
+  echo "created"
+fi
+
+# 6. GitHub OIDC provider
+log "Ensuring GitHub OIDC provider"
+OIDC_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+if aws iam list-open-id-connect-providers \
+     --query "OpenIDConnectProviderList[?Arn=='${OIDC_ARN}'].Arn" \
+     --output text | grep -q .; then
+  echo "already exists"
+else
+  aws iam create-open-id-connect-provider \
+    --url https://token.actions.githubusercontent.com \
+    --client-id-list sts.amazonaws.com \
+    --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1 &gt;/dev/null
+  echo "created"
+fi
+
+# 7. GitHub Actions deploy role (OIDC trust)
+log "Ensuring deploy role: $OIDC_ROLE_NAME"
+TRUST_FILE="$(mktemp)"
+cat &gt; "$TRUST_FILE" &lt;&lt;JSON
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "${OIDC_ARN}"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:${GITHUB_ORG}/${GITHUB_REPO}:ref:refs/heads/${GITHUB_BRANCH}"
+        }
+      }
+    }
+  ]
+}
+JSON
+
+if aws iam get-role --role-name "$OIDC_ROLE_NAME" &gt;/dev/null 2&gt;&amp;1; then
+  echo "already exists — updating trust policy"
+  aws iam update-assume-role-policy \
+    --role-name "$OIDC_ROLE_NAME" \
+    --policy-document "file://${TRUST_FILE}"
+else
+  aws iam create-role \
+    --role-name "$OIDC_ROLE_NAME" \
+    --assume-role-policy-document "file://${TRUST_FILE}" &gt;/dev/null
+  echo "created"
+fi
+rm -f "$TRUST_FILE"
+
+DEPLOY_POLICY_FILE="$(mktemp)"
+cat &gt; "$DEPLOY_POLICY_FILE" &lt;&lt;JSON
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRAuth",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRPushPull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT_ID}:repository/${ECR_REPO}"
+    },
+    {
+      "Sid": "ECSRegisterAndDeploy",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:DescribeTaskDefinition",
+        "ecs:UpdateService",
+        "ecs:DescribeServices"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PassRoleToECS",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::${AWS_ACCOUNT_ID}:role/${EXEC_ROLE_NAME}",
+        "arn:aws:iam::${AWS_ACCOUNT_ID}:role/ecsTaskRole"
+      ]
+    }
+  ]
+}
+JSON
+
+aws iam put-role-policy \
+  --role-name "$OIDC_ROLE_NAME" \
+  --policy-name GitHubActionsECSDeploy \
+  --policy-document "file://${DEPLOY_POLICY_FILE}"
+rm -f "$DEPLOY_POLICY_FILE"
+
+DEPLOY_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/${OIDC_ROLE_NAME}"
+
+# 8. Summary
+cat &lt;&lt;SUMMARY
+
+================================================================
+  Setup complete
+================================================================
+
+Paste these into .github/workflows/aws.yml:
+
+env:
+  AWS_REGION: ${AWS_REGION}
+  ECR_REPOSITORY: ${ECR_REPO}
+  ECS_SERVICE: ${ECS_SERVICE}
+  ECS_CLUSTER: ${ECS_CLUSTER}
+  ECS_TASK_DEFINITION: ${TASK_DEF_FILE}
+  CONTAINER_NAME: ${CONTAINER_NAME}
+
+And in the "Configure AWS credentials (OIDC)" step:
+
+  role-to-assume: ${DEPLOY_ROLE_ARN}
+
+ECR image URI: ${ECR_URI}
+================================================================
+SUMMARY</code></pre>
+
+    <h2 id="taskdef">Task definition — <code>.aws/task-definition.json</code></h2>
+    <span class="file-tag">.aws/task-definition.json</span>
+<pre><code>{
+  "family": "my-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "my-container",
+      "image": "PLACEHOLDER",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 80, "protocol": "tcp" }
+      ]
+    }
+  ]
+}</code></pre>
+    <div class="callout warn">
+      Nilai <code>name</code> mesti sepadan dengan <code>CONTAINER_NAME</code> dalam workflow.
+    </div>
+
+    <h2 id="dockerfile">Dockerfile (contoh)</h2>
+    <span class="file-tag">Dockerfile</span>
+<pre><code># ---- Build stage ----
+FROM node:20-alpine AS build
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY . .
+
+# ---- Runtime stage ----
+FROM node:20-alpine AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=80
+
+COPY --from=build /app ./
+
+EXPOSE 80
+CMD ["node", "server.js"]</code></pre>
+
+    <h3 id="serverjs">server.js</h3>
+    <span class="file-tag">server.js</span>
+<pre><code>const http = require("http");
+const port = process.env.PORT || 80;
+
+http.createServer((req, res) =&gt; {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Hello from ECS\n");
+}).listen(port, () =&gt; console.log(`Listening on ${port}`));</code></pre>
+
+    <h3>Local build test</h3>
+    <pre><code>docker build -t my-app:local .
+docker run --rm -p 8080:80 my-app:local</code></pre>
+
+    <h2 id="ignore">Ignore files</h2>
+
+    <span class="file-tag">.dockerignore</span>
+<pre><code>.git
+.github
+.aws
+node_modules
+npm-debug.log
+Dockerfile
+deploy.sh
+*.md</code></pre>
+
+    <span class="file-tag">.gitignore (additions)</span>
+<pre><code># Node
+node_modules/
+npm-debug.log*
+
+# Env
+.env
+.env.*
+
+# AWS
+.aws/credentials
+.aws/config
+*.pem
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/</code></pre>
+
+    <h2 id="iam">IAM — policy untuk deploy role</h2>
+    <p>Digunakan oleh kedua-dua pengguna IAM (fallback) dan role OIDC. Gantikan <code>YOUR_ACCOUNT_ID</code>, region, dan nama.</p>
+<pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRAuth",
+      "Effect": "Allow",
+      "Action": ["ecr:GetAuthorizationToken"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRPushPull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": "arn:aws:ecr:us-east-2:YOUR_ACCOUNT_ID:repository/my-ecr-repo"
+    },
+    {
+      "Sid": "ECSRegisterAndDeploy",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:DescribeTaskDefinition",
+        "ecs:UpdateService",
+        "ecs:DescribeServices"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PassRoleToECS",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
+        "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskRole"
+      ]
+    }
+  ]
+}</code></pre>
+
+    <h3>Access-key fallback: cipta user</h3>
+    <pre><code>aws iam create-user --user-name github-actions-ecs-deploy
+aws iam put-user-policy \
+  --user-name github-actions-ecs-deploy \
+  --policy-name GitHubActionsECSDeploy \
+  --policy-document file://github-actions-policy.json
+aws iam create-access-key --user-name github-actions-ecs-deploy</code></pre>
+
+    <h2 id="oidc">OIDC provider + trust policy</h2>
+
+    <h3>Cipta provider (sekali per akaun)</h3>
+    <pre><code>aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1</code></pre>
+
+    <h3>Trust policy</h3>
+    <span class="file-tag">trust.json</span>
+<pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::YOUR_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:OWNER/REPO:ref:refs/heads/gh-pages"
+        }
+      }
+    }
+  ]
+}</code></pre>
+
+    <pre><code>aws iam create-role \
+  --role-name github-actions-ecs-deploy-oidc \
+  --assume-role-policy-document file://trust.json
+
+aws iam put-role-policy \
+  --role-name github-actions-ecs-deploy-oidc \
+  --policy-name GitHubActionsECSDeploy \
+  --policy-document file://github-actions-policy.json</code></pre>
+
+    <h2 id="ecsroles">ECS task execution role</h2>
+    <pre><code>aws iam create-role \
+  --role-name ecsTaskExecutionRole \
+  --assume-role-policy-document '{
+    "Version":"2012-10-17",
+    "Statement":[{
+      "Effect":"Allow",
+      "Principal":{"Service":"ecs-tasks.amazonaws.com"},
+      "Action":"sts:AssumeRole"
+    }]
+  }'
+
+aws iam attach-role-policy \
+  --role-name ecsTaskExecutionRole \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy</code></pre>
+
+    <h2 id="readme">README § Deployment</h2>
+    <p>Letak di bawah heading <code>## Deployment</code> dalam <code>README.md</code>.</p>
+
+    <div class="panel">
+      <h3 style="margin-top:0">How it works</h3>
+      <div class="flow">
+        <span>push to gh-pages</span> <em>→</em>
+        <span>assume AWS role (OIDC)</span> <em>→</em>
+        <span>docker build</span> <em>→</em>
+        <span>push to ECR</span> <em>→</em>
+        <span>render task def</span> <em>→</em>
+        <span>deploy to ECS</span> <em>→</em>
+        <span>wait for stability</span>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>File</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>.github/workflows/aws.yml</code></td><td>The deploy workflow.</td></tr>
+        <tr><td><code>.aws/task-definition.json</code></td><td>Fargate task definition template. <code>image</code> is a <code>PLACEHOLDER</code>.</td></tr>
+        <tr><td><code>deploy.sh</code></td><td>Idempotent AWS bootstrap. Safe to re-run.</td></tr>
+        <tr><td><code>Dockerfile</code></td><td>Example multi-stage Node 20 image.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Configuration reference</h3>
+    <table>
+      <thead><tr><th>Workflow env var</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>AWS_REGION</code></td><td>AWS region for ECR and ECS.</td></tr>
+        <tr><td><code>ECR_REPOSITORY</code></td><td>ECR repository name (not the full URI).</td></tr>
+        <tr><td><code>ECS_SERVICE</code></td><td>ECS service name.</td></tr>
+        <tr><td><code>ECS_CLUSTER</code></td><td>ECS cluster name.</td></tr>
+        <tr><td><code>ECS_TASK_DEFINITION</code></td><td>Path to the task definition JSON.</td></tr>
+        <tr><td><code>CONTAINER_NAME</code></td><td>Must match <code>containerDefinitions[].name</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Deploying a new version</h3>
+    <pre><code>git push origin gh-pages</code></pre>
+
+    <h3>Secrets</h3>
+    <p>Dengan OIDC, <strong>tiada AWS secret diperlukan</strong>. Untuk fallback, tambah <code>AWS_ACCESS_KEY_ID</code> dan <code>AWS_SECRET_ACCESS_KEY</code> di <em>Settings → Secrets and variables → Actions</em>.</p>
+
+    <h2 id="contributing">CONTRIBUTING.md</h2>
+
+    <h3>Local development</h3>
+    <pre><code>npm ci
+npm start
+
+# atau, test container seperti ECS:
+docker build -t my-app:local .
+docker run --rm -p 8080:80 my-app:local</code></pre>
+
+    <h3>Branching model</h3>
+    <table>
+      <thead><tr><th>Branch</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>gh-pages</code></td><td>Deploy branch. Setiap push trigger workflow.</td></tr>
+        <tr><td><code>main</code></td><td>Development branch.</td></tr>
+        <tr><td><code>feature/*</code>, <code>fix/*</code>, <code>chore/*</code></td><td>Topic branches.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Review checklist</h3>
+    <ul class="checklist">
+      <li>Tests pass locally.</li>
+      <li><code>docker build</code> succeeds.</li>
+      <li>Perubahan pada workflow / task def / deploy.sh diuji pada non-prod AWS.</li>
+      <li>Tiada secrets, ARN, atau account ID di-commit.</li>
+      <li>README / docs dikemas kini jika behaviour berubah.</li>
+    </ul>
+
+    <h3>Rules</h3>
+    <ul>
+      <li>Jangan push terus ke <code>gh-pages</code> tanpa review kecuali hotfix.</li>
+      <li>Jangan commit AWS credentials. Guna OIDC.</li>
+      <li>Jika ubah OIDC trust policy, koordinasi dengan pemilik akaun AWS.</li>
+      <li>Rollback = re-run workflow lama, bukan <code>git revert</code> + push.</li>
+    </ul>
+
+    <h2 id="badge">Status badge</h2>
+    <pre><code>[![Deploy to Amazon ECS](https://github.com/OWNER/REPO/actions/workflows/aws.yml/badge.svg?branch=gh-pages)](https://github.com/OWNER/REPO/actions/workflows/aws.yml)</code></pre>
+
+    <h2 id="pr">PR description</h2>
+    <div class="panel">
+      <h3 style="margin-top:0">Add ECS deployment workflow with setup instructions</h3>
+      <h4>Summary</h4>
+      <p>Adds a GitHub Actions workflow that builds a Docker image, pushes it to Amazon ECR, and rolls out a new task definition to Amazon ECS on every push to <code>gh-pages</code>. Includes an idempotent AWS setup script and a task definition template.</p>
+
+      <h4>Files</h4>
+      <table>
+        <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>.github/workflows/aws.yml</code></td><td>Deploy workflow (OIDC).</td></tr>
+          <tr><td><code>.aws/task-definition.json</code></td><td>Fargate task definition template.</td></tr>
+          <tr><td><code>deploy.sh</code></td><td>Idempotent AWS bootstrap.</td></tr>
+          <tr><td><code>Dockerfile</code>, <code>server.js</code></td><td>Example app image.</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Setup checklist (before merging)</h4>
+      <ul class="checklist">
+        <li>Run <code>./deploy.sh</code>.</li>
+        <li>Paste printed <code>env:</code> block into <code>aws.yml</code>.</li>
+        <li>Paste printed <code>role-to-assume</code> ARN.</li>
+        <li>Confirm <code>permissions: id-token: write</code>.</li>
+        <li>Verify subnets have NAT/IGW route.</li>
+        <li>Verify SG allows inbound on container port.</li>
+      </ul>
+
+      <h4>Testing</h4>
+      <ul class="checklist">
+        <li><code>./deploy.sh</code> runs clean end-to-end.</li>
+        <li>Push triggers the workflow without errors.</li>
+        <li>ECS service reaches steady state.</li>
+        <li>Logs appear in <code>/ecs/&lt;task-family&gt;</code>.</li>
+      </ul>
+
+      <h4>Breaking changes</h4>
+      <p>None. This is additive.</p>
+    </div>
+
+    <h2 id="changelog">CHANGELOG entry</h2>
+<pre><code>## [Unreleased]
+
+### Added
+- GitHub Actions workflow (`aws.yml`) that builds a Docker image, pushes it to
+  Amazon ECR, and deploys a new task definition to Amazon ECS on pushes to
+  `gh-pages`.
+- `deploy.sh`, an idempotent bootstrap script that provisions the ECR repository,
+  ECS cluster and service, ECS task execution role, GitHub OIDC provider, and
+  the OIDC deploy role.
+- `.aws/task-definition.json` template (Fargate, single container, `awslogs`
+  driver) rendered per commit by the workflow.
+- Example multi-stage `Dockerfile` and `server.js` for the sample Node 20 image.
+
+### Security
+- Deployment uses GitHub OIDC (`id-token: write`) and
+  `sts:AssumeRoleWithWebIdentity`; no long-lived AWS access keys are stored in
+  GitHub secrets.</code></pre>
+
+    <h2 id="release">Release notes</h2>
+
+    <h3>Full version</h3>
+    <div class="panel">
+      <h4 style="margin-top:0">v0.x.0 — ECS deployment pipeline</h4>
+      <p><strong>Highlights</strong></p>
+      <ul>
+        <li>Push-to-deploy to Amazon ECS dari <code>gh-pages</code>.</li>
+        <li>Keyless AWS auth dengan GitHub OIDC.</li>
+        <li>One-shot bootstrap <code>./deploy.sh</code>.</li>
+      </ul>
+      <p><strong>New files</strong></p>
+      <ul>
+        <li><code>.github/workflows/aws.yml</code></li>
+        <li><code>.aws/task-definition.json</code></li>
+        <li><code>deploy.sh</code></li>
+        <li><code>Dockerfile</code>, <code>server.js</code></li>
+      </ul>
+      <p><strong>Upgrade notes</strong></p>
+      <ul>
+        <li>Jalankan <code>./deploy.sh</code> sekali per akaun/region sebelum workflow boleh berjaya.</li>
+        <li>Edit CONFIG block, tampal <code>env:</code> dan <code>role-to-assume</code> ke dalam workflow.</li>
+        <li>Padam access key lama selepas OIDC berjaya.</li>
+      </ul>
+      <p><strong>Known limitations</strong></p>
+      <ul>
+        <li>Single-container task definition.</li>
+        <li>Tiada ALB / target group.</li>
+        <li><code>deploy.sh</code> perlukan credentials dengan kebenaran IAM.</li>
+      </ul>
+    </div>
+
+    <h3>Short version (GitHub Release body)</h3>
+<pre><code>### ECS deployment pipeline
+
+Push-to-deploy to Amazon ECS from `gh-pages`, authenticated via GitHub OIDC —
+no long-lived AWS keys.
+
+**Setup**
+1. Edit the CONFIG block in `deploy.sh`.
+2. Run `./deploy.sh`.
+3. Paste the printed `env:` block and `role-to-assume` ARN into `.github/workflows/aws.yml`.
+4. Push to `gh-pages`.
+
+**Breaking changes:** none</code></pre>
+
+    <h2 id="troubleshoot">Troubleshooting</h2>
+    <table>
+      <thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>Not authorized to perform sts:AssumeRoleWithWebIdentity</code></td>
+          <td>Trust policy <code>sub</code> tidak sepadan dengan repo/branch. Jalankan semula <code>deploy.sh</code> selepas fix <code>GITHUB_ORG</code> / <code>GITHUB_REPO</code> / <code>GITHUB_BRANCH</code>.</td>
+        </tr>
+        <tr>
+          <td><code>denied: requested access to the resource is denied</code> (ECR push)</td>
+          <td>ARN dalam <code>ECRPushPull</code> tidak sepadan. Semak <code>ECR_REPO</code>.</td>
+        </tr>
+        <tr>
+          <td>ECS task mati serta-merta</td>
+          <td>Semak CloudWatch Logs di <code>/ecs/&lt;task-family&gt;</code>.</td>
+        </tr>
+        <tr>
+          <td>Service tidak stabilize</td>
+          <td>Subnet tiada route ke NAT/IGW. Semak <code>VPC_SUBNETS</code> dan <code>VPC_SECURITY_GROUPS</code>.</td>
+        </tr>
+        <tr>
+          <td><code>CannotPullContainerError</code></td>
+          <td>Execution role tiada <code>AmazonECSTaskExecutionRolePolicy</code>, atau image URI salah.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="rollback">Rollback</h2>
+    <p>Re-run workflow dari commit sebelumnya dalam tab <strong>Actions</strong>, atau secara manual:</p>
+<pre><code>aws ecs update-service \
+  --cluster "$ECS_CLUSTER" \
+  --service "$ECS_SERVICE" \
+  --task-definition "$ECS_TASK_FAMILY:PREVIOUS_REVISION" \
+  --region "$AWS_REGION"</code></pre>
+
+    <p>Senarai revisi:</p>
+<pre><code>aws ecs list-task-definitions \
+  --family-prefix "$ECS_TASK_FAMILY" \
+  --region "$AWS_REGION"</code></pre>
+
+    <h2 id="commit">Commit commands</h2>
+<pre><code>git add .
+git commit -m "Add ECS deployment workflow with setup instructions" \
+           -m "Adds a GitHub Actions workflow that builds a Docker image, pushes it
+to ECR, and rolls out a new ECS task definition on pushes to gh-pages. Includes
+an idempotent AWS bootstrap script (deploy.sh), a Fargate task definition
+template, an OIDC trust + deploy role, README deployment section, CONTRIBUTING
+guide, and CHANGELOG entry. No long-lived AWS credentials are stored in GitHub."
+git push origin gh-pages</code></pre>
+
+    <h3>Split commits (Conventional Commits)</h3>
+<pre><code># 1. Workflow
+git add .github/workflows/aws.yml
+git commit -m "ci(ecs): add ECS deploy workflow" \
+           -m "Adds a GitHub Actions workflow that builds a Docker image, pushes it to ECR, and rolls out a new ECS task definition on pushes to gh-pages."
+
+# 2. Task definition template
+git add .aws/task-definition.json
+git commit -m "chore(ecs): add task definition template" \
+           -m "Fargate task definition with awslogs, a single container, and PLACEHOLDER image that the workflow renders per commit SHA."
+
+# 3. Setup script
+git add deploy.sh
+git commit -m "chore(deploy): add idempotent AWS setup script" \
+           -m "Provisions ECR, ECS cluster and service, execution role, GitHub OIDC provider, and deploy role. Prints the values needed for aws.yml."</code></pre>
+
+    <hr>
+
+    <h2>Semua dalam susunan</h2>
+    <p>Anda kini ada, dari hujung ke hujung:</p>
+    <ol>
+      <li><strong><code>aws.yml</code></strong> — workflow deploy (OIDC).</li>
+      <li><strong><code>deploy.sh</code></strong> — bootstrap AWS idempotent.</li>
+      <li><strong><code>.aws/task-definition.json</code></strong> — Fargate task definition.</li>
+      <li><strong><code>Dockerfile</code> + <code>server.js</code></strong> — contoh aplikasi.</li>
+      <li><strong>IAM policy</strong> — ECR push + ECS deploy + OIDC trust.</li>
+      <li><strong>Commit messages</strong> — plain dan Conventional Commits.</li>
+      <li><strong>PR description</strong> — dengan checklist testing.</li>
+      <li><strong>CHANGELOG entry</strong> — format Keep a Changelog.</li>
+      <li><strong>Release notes</strong> — versi pendek dan penuh.</li>
+      <li><strong>README § Deployment</strong> — self-documenting.</li>
+      <li><strong>Status badge</strong>.</li>
+      <li><strong>CONTRIBUTING.md</strong>.</li>
+    </ol>
+
+    <div class="footer">
+      ECS Deployment Pipeline — single-file reference. Buka di pelayar, atau simpan sebagai <code>index.html</code>.
+    </div>
+
+  </main>
+</div>
+
+<script>
+  /* ---------- Copy buttons for every <pre> ---------- */
+  document.querySelectorAll('pre').forEach(function (pre) {
+    // Skip if already wrapped (idempotent)
+    if (pre.parentElement && pre.parentElement.classList.contains('pre-wrap')) return;
+
+    var wrap = document.createElement('div');
+    wrap.className = 'pre-wrap';
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'copy-btn';
+    btn.textContent = 'Copy';
+    btn.setAttribute('aria-label', 'Copy code');
+
+    btn.addEventListener('click', function () {
+      var code = pre.querySelector('code');
+      var text = code ? code.innerText : pre.innerText;
+
+      var done = function () {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(function () {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 1500);
+      };
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done).catch(function () {
+          fallbackCopy(text); done();
+        });
+      } else {
+        fallbackCopy(text); done();
+      }
+    });
+
+    wrap.appendChild(btn);
+  });
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  /* ---------- Theme toggle ---------- */
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('themeToggle');
+    var icon = document.getElementById('themeIcon');
+    var label = document.getElementById('themeLabel');
+
+    function render(theme) {
+      if (theme === 'dark') {
+        icon.textContent = '☀️';
+        label.textContent = 'Light';
+        btn.setAttribute('aria-label', 'Switch to light theme');
+      } else {
+        icon.textContent = '🌙';
+        label.textContent = 'Dark';
+        btn.setAttribute('aria-label', 'Switch to dark theme');
+      }
+    }
+
+    render(root.getAttribute('data-theme') || 'dark');
+
+    btn.addEventListener('click', function () {
+      var current = root.getAttribute('data-theme') || 'dark';
+      var next = current === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      render(next);
+    });
+  })();
+
+  /* ---------- Highlight active sidebar link ---------- */
+  (function () {
+    var links = document.querySelectorAll('.sidebar a');
+    var targets = Array.prototype.slice.call(links)
+      .map(function (a) { return document.querySelector(a.getAttribute('href')); })
+      .filter(Boolean);
+
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          links.forEach(function (l) { l.style.background = ''; });
+          var active = Array.prototype.slice.call(links)
+            .find(function (l) { return l.getAttribute('href') === '#' + e.target.id; });
+          if (active) active.style.background = 'var(--panel-2)';
+        }
+      });
+    }, { rootMargin: '-30% 0px -60% 0px', threshold: 0 });
+
+    targets.forEach(function (t) { obs.observe(t); });
+  })();
+</script>
+
+</body>
+</html>
+```
+
+### Apa yang baharu
+
+| Ciri | Keterangan |
+|---|---|
+| **Theme toggle** | Butang di atas sidebar. Tukar antara dark dan light. Pilihan disimpan dalam `localStorage`, jadi kekal selepas refresh. |
+| **Tiada flash** | Tema diaplikasi dalam `<script>` di `<head>` sebelum halaman dirender. |
+| **Butang Copy** | Setiap blok `<pre>` dapat butang **Copy** di penjuru kanan atas. Muncul bila hover. |
+| **Feedback "Copied!"** | Butang bertukar hijau sekejap selepas salin. |
+| **Fallback clipboard** | Guna `navigator.clipboard` jika tersedia; jika tidak, `document.execCommand('copy')`. |
+| **Aksesibiliti** | Butang ada `aria-label`, kekal boleh fokus dengan keyboard. |
+| **Idempotent** | Script tidak akan bungkus `<pre>` dua kali jika dijalankan semula. |
+
+### Nota teknikal
+
+- Token warna tema diletak dalam `:root, [data-theme="dark"]` dan di-override oleh `[data-theme="light"]`. Semua komponen guna `var(--...)`, jadi tukar tema automatik.
+- `.pre-wrap` ganti `.pre-wrap .lang` yang lama (tidak digunakan).
+- `.file-tag + .pre-wrap > pre` pastikan sudut atas kiri kekal tumpul bila ada `file-tag`.
+- Kod blok dalam `.callout` juga dapat butang Copy — margin atas diselaraskan.
+
+Simpan sebagai `index.html` dan buka dalam pelayar. Mahu saya tambah **carian dalam halaman** atau **cetak/PDF-friendly mode**?
