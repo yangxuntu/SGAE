@@ -1,0 +1,269 @@
+That markdown renders a GitHub Actions status badge, but the URLs in it are malformed. GitHub's badge URL format is:
+
+```
+https://github.com/OWNER/REPO/actions/workflows/WORKFLOW_FILE/badge.svg
+```
+
+with the link target being the same path minus `/badge.svg`. Your version inserts extra path segments (`required/google-gh-automation/workflows/`) between `actions/workflows/` and the actual workflow filename, which won't resolve to a workflow.
+
+Corrected version:
+
+```markdown
+[![GitHub Actions Scan](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml/badge.svg)](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml)
+```
+
+Notes:
+
+- If the workflow only runs on certain branches, you can pin one with `?branch=main` (or whatever the default is).
+- If the workflow's `name:` value is distinctive, you can use that instead of the filename, e.g. `.../workflows/GitHub%20Actions%20Scan/badge.svg`.
+- Badges for workflows that have never run, or that live in a private repo you don't have access to, will render as "no status" / a grey badge.Sure — what’s next? If you meant “next” as in continuing with GitHub Actions badge fixes, here are the usual next steps:
+
+**1. Pin the badge to a branch**
+```markdown
+[![GitHub Actions Scan](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml/badge.svg?branch=main)](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml)
+```
+
+**2. Use the workflow name instead of the filename**
+```markdown
+[![GitHub Actions Scan](https://github.com/google/styleguide/actions/workflows/GitHub%20Actions%20Scan/badge.svg)](https://github.com/google/styleguide/actions/workflows/GitHub%20Actions%20Scan)
+```
+
+**3. Use Shields.io for a custom label/style**
+```markdown
+[![GitHub Actions Scan](https://img.shields.io/github/actions/workflow/status/google/styleguide/github_actions_scan.yml?label=scan&style=flat-square)](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml)
+```
+
+**4. Troubleshooting if the badge is grey**
+- The workflow has never run.
+- The workflow is disabled.
+- The repo is private and the viewer isn’t authenticated.
+- The workflow filename/path in the URL doesn’t match `.github/workflows/...`.
+- You’re using a branch that doesn’t have that workflow.
+
+Paste the next badge, workflow file, or markdown snippet and I’ll continue from there.Here’s the full reference for GitHub Actions status badges, including the corrected version for your example.
+
+## 1. Corrected badge for your example
+
+Assuming the workflow file is at `.github/workflows/github_actions_scan.yml` in `google/styleguide`:
+
+```markdown
+[![GitHub Actions Scan](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml/badge.svg)](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml)
+```
+
+Your original URL had extra path segments:
+```
+/actions/workflows/required/google-gh-automation/workflows/.github/workflows/github_actions_scan.yml/badge.svg
+```
+Those `required/google-gh-automation/workflows/` parts don’t belong in the GitHub Actions badge URL.
+
+## 2. Generic badge format
+
+```markdown
+[![ALT TEXT](https://github.com/OWNER/REPO/actions/workflows/WORKFLOW_FILE/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/WORKFLOW_FILE)
+```
+
+- `OWNER` — GitHub user or organization
+- `REPO` — repository name
+- `WORKFLOW_FILE` — filename in `.github/workflows/`, e.g. `ci.yml`
+
+## 3. Optional query parameters
+
+GitHub’s native badge supports:
+
+- `?branch=main` — show status for a specific branch
+- `?event=push` — show status for a specific event
+- Combine with `&`
+
+Example:
+
+```markdown
+[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+```
+
+## 4. Using the workflow name instead of filename
+
+Spaces must be URL-encoded as `%20`:
+
+```markdown
+[![CI](https://github.com/OWNER/REPO/actions/workflows/CI%20Build/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/CI%20Build)
+```
+
+The filename is usually more reliable.
+
+## 5. Shields.io version
+
+More customization: label, logo, style, branch, etc.
+
+```markdown
+[![CI](https://img.shields.io/github/actions/workflow/status/OWNER/REPO/WORKFLOW_FILE?branch=main&label=CI&logo=github&style=flat-square)](https://github.com/OWNER/REPO/actions/workflows/WORKFLOW_FILE)
+```
+
+## 6. HTML version
+
+```html
+<a href="https://github.com/OWNER/REPO/actions/workflows/WORKFLOW_FILE">
+  <img src="https://github.com/OWNER/REPO/actions/workflows/WORKFLOW_FILE/badge.svg" alt="ALT TEXT">
+</a>
+```
+
+## 7. Troubleshooting grey / “no status” badge
+
+Common causes:
+
+- Workflow has never run.
+- Workflow is disabled.
+- Repo is private and the viewer isn’t authenticated.
+- Wrong owner, repo, or workflow filename.
+- Workflow file is not on the branch you’re requesting.
+- Branch parameter doesn’t match where the workflow exists.
+- Actions are disabled for the repo.
+- You’re viewing a fork; the badge shows the fork’s status.
+
+## 8. How to find the exact workflow filename
+
+1. Open the repo on GitHub.
+2. Go to the **Actions** tab.
+3. Click the workflow.
+4. Look at the URL — it will contain:
+   ```
+   /actions/workflows/FILENAME
+   ```
+5. Or check the repo’s `.github/workflows/` directory.
+
+## 9. Quick check
+
+Open this in a browser:
+
+```
+https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml
+```
+
+If that page 404s, the badge won’t work because the workflow filename or path is wrong.
+
+If by “all data” you meant something else — like all badge options for a specific repo, or a full list of GitHub Actions badge formats — tell me the exact repo/workflow and I’ll generate the exact markdown.What would you like next? A few directions I can take from here:
+
+- **Generate the exact badge** for a specific repo/workflow — just give me `OWNER/REPO` and the workflow filename.
+- **Write the workflow YAML** (`.github/workflows/...`) that the badge points to.
+- **Set up a badge for a private repo** or an organization repo.
+- **Explain GitHub Actions concepts** (events, jobs, runners, matrix builds, etc.).
+- **Fix a broken badge** — paste the current markdown and the repo URL.
+
+Tell me which one, or paste the repo/workflow, and I’ll continue.Untuk jana **badge GitHub Actions yang tepat**, saya perlukan:
+
+- `OWNER/REPO` — contoh: `google/styleguide`
+- nama fail workflow — contoh: `github_actions_scan.yml`
+
+Data **Muhamad Sazwan Bin Ismail, 22.10.1996** bukan nama repo/workflow GitHub, jadi ia tak cukup untuk jana badge Actions. Jangan letak data peribadi seperti tarikh lahir dalam README awam.
+
+Template badge Actions:
+
+```markdown
+[![GitHub Actions Scan](https://github.com/OWNER/REPO/actions/workflows/WORKFLOW_FILE/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/WORKFLOW_FILE)
+```
+
+Contoh jika repo `google/styleguide` dan fail `github_actions_scan.yml`:
+
+```markdown
+[![GitHub Actions Scan](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml/badge.svg)](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml)
+```
+
+Workflow YAML asas:
+
+```yaml
+name: GitHub Actions Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run scan
+        run: echo "Scanning..."
+```
+
+Untuk repo private / organisasi:
+
+- Guna URL yang sama: `github.com/ORG/REPO/actions/workflows/FILE/badge.svg`
+- Badge private hanya jelas kepada pengguna yang ada akses.
+- Shields.io untuk private repo biasanya perlu token.
+
+Kalau anda mahu badge statik yang paparkan nama/tarikh, formatnya:
+
+```markdown
+![label](https://img.shields.io/badge/LABEL-MESSAGE-COLOR)
+```
+
+Tetapi saya tak sarankan letak tarikh lahir dalam README awam.
+
+Hantar format ini dan saya akan jana badge tepat:
+
+```text
+OWNER/REPO:
+WORKFLOW_FILE:
+```Here’s the same information again, as requested.
+
+To generate the **exact GitHub Actions badge**, I need two things:
+
+- `OWNER/REPO` — e.g. `google/styleguide`
+- The workflow filename — e.g. `github_actions_scan.yml`
+
+The data **Muhamad Sazwan Bin Ismail, 22.10.1996** is not a repository or workflow name. Please don’t put personal data like a birth date into a public README or badge.
+
+**Badge template:**
+
+```markdown
+[![GitHub Actions Scan](https://github.com/OWNER/REPO/actions/workflows/WORKFLOW_FILE/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/WORKFLOW_FILE)
+```
+
+**Example** (if repo is `google/styleguide` and workflow file is `github_actions_scan.yml`):
+
+```markdown
+[![GitHub Actions Scan](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml/badge.svg)](https://github.com/google/styleguide/actions/workflows/github_actions_scan.yml)
+```
+
+**Basic workflow YAML:**
+
+```yaml
+name: GitHub Actions Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run scan
+        run: echo "Scanning..."
+```
+
+**Private / organization repo:**
+
+- Use the same URL format: `github.com/ORG/REPO/actions/workflows/FILE/badge.svg`
+- The badge is only visible to users with access.
+- Shields.io badges for private repos usually require a token.
+
+**Static badge** (if you just want to show a name/date):
+
+```markdown
+![label](https://img.shields.io/badge/LABEL-MESSAGE-COLOR)
+```
+
+But again, I’d advise against putting a birth date in a public README.
+
+To get the exact badge, reply with:
+
+```text
+OWNER/REPO:
+WORKFLOW_FILE:
+```
+
+Then I’ll generate the precise markdown for you.
