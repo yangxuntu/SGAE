@@ -1,0 +1,1312 @@
+# This workflow will upload a Python Package to PyPI when a release is created
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: Upload Python Package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  release-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build release distributions
+        run: |
+          # NOTE: put your own distribution build steps here.
+          python -m pip install build
+          python -m build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+  pypi-publish:
+    runs-on: ubuntu-latest
+    needs:
+      - release-build
+    permissions:
+      # IMPORTANT: this permission is mandatory for trusted publishing
+      id-token: write
+
+    # Dedicated environments with protections for publishing are strongly recommended.
+    # For more information, see: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-protection-rules
+    environment:
+      name: pypi
+      # OPTIONAL: uncomment and update to include your PyPI project URL in the deployment status:
+      # url: https://pypi.org/p/YOURPROJECT
+      #
+      # ALTERNATIVE: if your GitHub Release name is the PyPI project version string
+      # ALTERNATIVE: exactly, uncomment the following line instead:
+      # url: https://pypi.org/project/YOURPROJECT/${{ github.event.release.name }}
+
+    steps:
+      - name: Retrieve release distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+      - name: Publish release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          This is the standard GitHub-provided PyPI publishing workflow. It's solid, but here are some observations and suggested improvements depending on your needs.
+
+What it does well
+
+· Trusted publishing (OIDC) via id-token: write — no API tokens needed.
+· Two-stage job (build → publish) so the artifact is inspectable and reusable.
+· Environment protection (pypi) allows required reviewers.
+
+Issues / things to double-check
+
+1. python-version: "3.x" — this floats to the latest 3.x, so your sdist/wheel metadata can silently change between releases. Prefer pinning, e.g. "3.12", or a matrix if you publish pure-Python wheels that should support old versions.
+2. No version sanity check. If your pyproject.toml version doesn't match the Git tag, PyPI will reject it (or worse, publish the wrong version). A quick guard helps:
+   ```yaml
+   - name: Verify version matches tag
+     run: |
+       python -c "import tomllib,sys,os; \
+         v=tomllib.load(open('pyproject.toml','rb'))['project']['version']; \
+         sys.exit(0 if v==os.environ['GITHUB_REF_NAME'].lstrip('v') else 1)"
+   ```
+3. Artifact download needs a fresh checkout only if you build step-by-step. You're not building in the publish job — good. But pypa/gh-action-pypi-publish will happily publish anything in dist/, so consider attestations: true (see below).
+4. No attestations: true. GitHub now supports build provenance attestations for PyPI (PEP 740). Add:
+   ```yaml
+   - uses: pypa/gh-action-pypi-publish@release/v1
+     with:
+       packages-dir: dist/
+       attestations: true
+   ```
+   and add attestations: write + artifact-metadata: write to the job permissions.
+5. environment.url — uncomment it. Without it, the GitHub deployment shows no link to PyPI:
+   ```yaml
+   url: https://pypi.org/project/YOURPROJECT/${{ github.event.release.name }}
+   ```
+6. No TestPyPI dry run. For first-time setup, publishing to TestPyPI first saves you from burning release numbers. You can gate it by github.event.release.prerelease or a separate workflow_dispatch.
+7. Missing permissions: contents: read on the publish job. It's not needed for OIDC, but the top-level contents: read doesn't cascade — each job inherits only repo defaults. Setting it explicitly is cleaner if you later tighten defaults.
+8. actions/setup-python@v5 with cache: — if you have dev dependencies, caching speeds builds up:
+   ```yaml
+   with:
+     python-version: "3.12"
+     cache: pip
+   ```
+9. No sdist-only or wheel-only filter. If you only want one format:
+   ```yaml
+   - run: python -m build --sdist
+   ```
+   or --wheel.
+10. Skipping skip-existing — if a re-run happens after a partial upload, the publish step fails on already-uploaded files. Add skip-existing: true for idempotency (useful with re-triggered workflows).
+
+Minimal hardened version
+
+```yaml
+name: Upload Python Package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  release-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade build
+          python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+  pypi-publish:
+    runs-on: ubuntu-latest
+    needs: release-build
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+    environment:
+      name: pypi
+      url: https://pypi.org/project/YOURPROJECT/${{ github.event.release.name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          attestations: true
+          skip-existing: true
+```
+
+If you tell me your project layout (pyproject.toml vs setup.py, package name, whether you want TestPyPI first), I can tailor it further.Assuming “Next” means the next step after the basic PyPI publish workflow, the most useful addition is a TestPyPI dry-run so you can validate the whole pipeline (build → OIDC → upload) without burning a real PyPI version.
+
+Add a TestPyPI job triggered manually or on prereleases
+
+```yaml
+name: Upload Python Package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:        # manual trigger for TestPyPI dry-run
+
+permissions:
+  contents: read
+
+jobs:
+  release-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade build
+          python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+
+  # ── TestPyPI (dry-run) ─────────────────────────────────────────────
+  testpypi-publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease
+    runs-on: ubuntu-latest
+    needs: release-build
+    permissions:
+      id-token: write
+      contents: read
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/YOURPROJECT/
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist/
+          skip-existing: true
+
+  # ── Real PyPI ──────────────────────────────────────────────────────
+  pypi-publish:
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    needs: release-build
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+    environment:
+      name: pypi
+      url: https://pypi.org/project/YOURPROJECT/${{ github.event.release.name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-dists
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          attestations: true
+          skip-existing: true
+```
+
+What you still need to do on the PyPI side
+
+1. Create a trusted publisher for testpypi and pypi environments:
+   · PyPI → Your project → Publishing → Add a new pending publisher
+   · Owner: your GitHub user/org, Repo: your repo, Workflow: python-publish.yml, Environment: testpypi (or pypi)
+2. Create matching GitHub environments (testpypi, pypi) under Settings → Environments and add required reviewers if desired.
+
+---
+
+If “Next” meant something else, tell me which direction you want:
+
+· Version management — auto-bump versions, git tags, changelogs (e.g. python-semantic-release, bump-my-version)
+· CI for tests/lint before publishing (matrix, ruff, pytest, coverage)
+· Multi-platform wheels (cibuildwheel for C extensions)
+· Docs — auto-deploy to Read the Docs / GitHub Pages on release
+· Container images — publish to GHCR alongside PyPI
+
+Which one should I do next?Here are complete GitHub Actions workflows for all five areas. I'll build them as a unified release pipeline rather than disconnected pieces.
+
+1. CI for Tests & Lint (ci.yml)
+
+Run this on every push/PR to catch issues before release:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package with dev extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,test]"
+
+      - name: Lint (ruff)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Test (pytest)
+        run: pytest -q --cov=src --cov-report=xml
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+```
+
+Key points: fail-fast: false so you see all Python versions; cache: pip speeds up installs; concurrency cancels stale runs.
+
+2. Version Management (release.yml)
+
+Two main approaches — pick one:
+
+Option A: python-semantic-release (fully automated from commit messages)
+
+```yaml
+name: Semantic Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    concurrency: release
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # semantic-release needs full history
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python Semantic Release
+        id: release
+        uses: python-semantic-release/python-semantic-release@v10
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build distributions
+        if: steps.release.outputs.released == 'true'
+        run: |
+          python -m pip install build
+          python -m build
+
+      - name: Publish to PyPI
+        if: steps.release.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+      - name: Upload to GitHub Release
+        if: steps.release.outputs.released == 'true'
+        uses: python-semantic-release/upload-to-gh-release@v10
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Configure in pyproject.toml:
+
+```toml
+[tool.semantic_release]
+branch = "main"
+tag_format = "v{version}"
+version_toml = ["pyproject.toml:project.version"]
+```
+
+Option B: bump-my-version (manual/semi-automated, more control)
+
+```yaml
+name: Bump Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_kind:
+        description: "Release kind"
+        required: true
+        type: choice
+        options: [major, minor, patch]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install bump-my-version
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        run: bump-my-version bump --verbose ${{ inputs.release_kind }}
+
+      - name: Push changes
+        run: git push && git push --tags
+```
+
+Configure in pyproject.toml:
+
+```toml
+[tool.bumpversion]
+current_version = "0.1.0"
+tag_format = "v{new_version}"
+commit = true
+tag = true
+```
+
+3. Multi-Platform Wheels (build_wheels.yml)
+
+Use cibuildwheel to build manylinux, musllinux, macOS, and Windows wheels in one job:
+
+```yaml
+name: Build Wheels
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build_wheels:
+    name: Wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["cp310", "cp311", "cp312", "cp313"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.3.0
+        env:
+          CIBW_BUILD: ${{ matrix.python }}-*
+          CIBW_SKIP: "*-musllinux_ppc64le *-musllinux_s390x"
+          CIBW_ARCHS_LINUX: "x86_64"
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          CIBW_ARCHS_WINDOWS: "AMD64"
+          CIBW_TEST_REQUIRES: "pytest"
+          CIBW_TEST_COMMAND: "pytest {project}/tests"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.python }}
+          path: ./wheelhouse/*.whl
+
+  build_sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install build
+          python -m build --sdist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+```
+
+If you have pure-Python code (no C extensions), you can skip cibuildwheel entirely and just build a universal wheel with python -m build in your existing release job — it's much faster.
+
+4. Documentation
+
+Option A: MkDocs → GitHub Pages (simpler, recommend for most projects)
+
+```yaml
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", "mkdocs.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install mkdocs-material mkdocstrings[python]
+
+      - run: mkdocs gh-deploy --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Option B: Sphinx → Read the Docs (via direct upload)
+
+```yaml
+name: Build Docs
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r docs/requirements.txt
+
+      - run: sphinx-build -b html docs/ _build/html
+
+      - uses: readthedocs/upload-action@v1
+        with:
+          token: ${{ secrets.READTHEDOCS_TOKEN }}
+          project-slug: my-project
+          html: _build/html
+```
+
+You'll need a READTHEDOCS_TOKEN secret from your RTD account.
+
+5. Container Images → GHCR
+
+```yaml
+name: Publish Container
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase image name
+        run: echo "IMAGE=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+```
+
+GITHUB_TOKEN is automatically provided — no extra secrets needed for GHCR.
+
+Putting It All Together
+
+Suggested repo structure:
+
+```
+.github/workflows/
+  ci.yml              # tests + lint on every push/PR
+  release.yml         # version bump → PyPI + GH Release
+  build_wheels.yml    # multi-platform wheels
+  docs.yml            # docs deploy
+  docker.yml          # container to GHCR
+```
+
+Ordering considerations:
+
+· ci.yml gates everything — make release.yml, build_wheels.yml, and docs.yml depend on it passing (via workflow_run or branch protection rules).
+· release.yml triggers on push to main (semantic-release) or manual workflow_dispatch (bump-my-version).
+· build_wheels.yml and docker.yml trigger on version tags (v*), which release.yml creates.
+· docs.yml can run independently on doc changes or on release.
+
+Secrets you need to configure:
+
+Secret Where Purpose
+GITHUB_TOKEN automatic GHCR push, GitHub Release, Pages deploy
+READTHEDOCS_TOKEN repo secret RTD upload (if using Option B for docs)
+(none for PyPI) — Trusted Publishing uses OIDC
+
+One caution: if you're using semantic-release, it creates the tag itself — don't also trigger wheel/container builds on release: published, or you'll get a race. Trigger them on push: tags: ['v*'] instead, since semantic-release pushes the tag.
+
+If you tell me whether your package has C extensions (for the wheel decision) and which docs tool you prefer, I can trim these down to exactly what you need.Sounds good. When you're ready to move forward, the most useful next pieces would be:
+
+1. A concrete pyproject.toml — with [project] metadata, [project.optional-dependencies] for dev/test, and any of the tool configs referenced above ([tool.semantic_release], [tool.bumpversion], [tool.ruff], [tool.pytest.ini_options], [tool.coverage]). This is the file that ties all the workflows together.
+2. Repo layout sanity check — src/ layout vs flat, where docs/, tests/, Dockerfile, mkdocs.yml/docs/conf.py live, so paths in the workflows match reality.
+3. Branch protection + environment rules — which checks are required before merge, which environments need manual approval, whether tags can be pushed by GITHUB_TOKEN.
+4. Trim the workflows — once I know if you have C extensions (drop cibuildwheel if not), and MkDocs vs Sphinx, I can collapse the five workflows into two or three tightly-scoped ones.
+
+Just paste your current pyproject.toml (or say "start fresh") and tell me: C extensions? docs tool? src layout? — then I'll produce the exact files.
+Here's a complete, coherent setup assuming a src-layout pure-Python package with MkDocs docs. Adapt names (myproject, src/myproject) to yours.
+
+1. pyproject.toml
+
+```toml
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "myproject"
+version = "0.1.0"
+description = "Short description of myproject."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Your Name", email = "you@example.com" }]
+keywords = ["example", "library"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+]
+dependencies = [
+  # runtime deps here
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.6",
+  "pytest>=8",
+  "pytest-cov>=5",
+  "mypy>=1.11",
+  "mkdocs-material>=9.5",
+  "mkdocstrings[python]>=0.25",
+  "python-semantic-release>=9",
+  "build>=1.2",
+  "twine>=5",
+]
+test = [
+  "pytest>=8",
+  "pytest-cov>=5",
+]
+
+[project.urls]
+Homepage = "https://github.com/YOURUSER/myproject"
+Documentation = "https://YOURUSER.github.io/myproject/"
+Repository = "https://github.com/YOURUSER/myproject"
+Changelog = "https://github.com/YOURUSER/myproject/releases"
+
+# ── Hatchling: tell it src layout ──────────────────────────────────────
+[tool.hatch.build.targets.wheel]
+packages = ["src/myproject"]
+
+# ── Ruff ───────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]  # handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # allow assert in tests
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ── Pytest ─────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+# ── Coverage ───────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["src/myproject"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+]
+
+# ── Mypy (optional) ────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src/myproject"]
+
+# ── python-semantic-release ────────────────────────────────────────────
+[tool.semantic_release]
+branch = "main"
+tag_format = "v{version}"
+version_toml = ["pyproject.toml:project.version"]
+commit_message = "chore(release): {version}"
+changelog_file = "CHANGELOG.md"
+build_command = "pip install build && python -m build"
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = ["feat", "fix", "perf", "refactor", "docs", "chore", "test", "ci", "build"]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+```
+
+2. Repo layout
+
+```
+myproject/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml
+│       ├── release.yml
+│       ├── docs.yml
+│       └── docker.yml          # delete if you don't ship a container
+├── docs/
+│   ├── index.md
+│   ├── api.md
+│   └── requirements.txt        # not needed with MkDocs, only for Sphinx
+├── src/
+│   └── myproject/
+│       ├── __init__.py         # __version__ = "0.1.0"
+│       └── py.typed
+├── tests/
+│   ├── __init__.py
+│   └── test_smoke.py
+├── .dockerignore               # delete with docker.yml
+├── .gitignore
+├── CHANGELOG.md                # managed by semantic-release
+├── Dockerfile                  # delete with docker.yml
+├── LICENSE
+├── mkdocs.yml
+├── pyproject.toml
+└── README.md
+```
+
+mkdocs.yml:
+
+```yaml
+site_name: myproject
+site_url: https://YOURUSER.github.io/myproject/
+repo_url: https://github.com/YOURUSER/myproject
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+nav:
+  - Home: index.md
+  - API: api.md
+```
+
+src/myproject/__init__.py:
+
+```python
+"""myproject — short description."""
+
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("myproject")
+except PackageNotFoundError:  # running from a source checkout
+    __version__ = "0.0.0"
+
+__all__ = ["__version__"]
+```
+
+tests/test_smoke.py:
+
+```python
+from myproject import __version__
+
+
+def test_version_is_string():
+    assert isinstance(__version__, str)
+    assert __version__
+```
+
+3. Branch protection & environment rules
+
+Settings → Branches → Add rule for main:
+
+· ✅ Require pull request before merging (1 approval)
+· ✅ Require status checks to pass: test (3.10), test (3.11), test (3.12), test (3.13)
+· ✅ Require linear history
+· ✅ Require conversation resolution
+· ✅ Do not allow bypassing the above settings
+· ❌ Do not enable "Require signed commits" unless you sign locally
+
+Settings → Actions → General:
+
+· Workflow permissions: Read repository contents and packages permissions (workflows escalate per-job)
+· ✅ Allow GitHub Actions to create and approve pull requests (needed by semantic-release to push the release commit)
+
+Settings → Environments:
+
+Environment Protection rule Who can use it
+pypi Required reviewers (≥1), restrict branch to main, allow tags v* Maintainers
+testpypi Optional reviewer Maintainers
+github-pages (auto-created by Pages) —
+
+Settings → Pages: Source = GitHub Actions (needed for the MkDocs workflow; mkdocs gh-deploy pushes to a gh-pages branch, so you can leave it as "Deploy from a branch → gh-pages" instead — pick one, not both. The deploy.yml variant that uses actions/deploy-pages is cleaner; the one below uses gh-deploy, so set Pages to gh-pages branch.)
+
+Tags: GITHUB_TOKEN can push tags unless you also protect them. To protect release tags:
+
+· Settings → Tags → New rule → pattern v* → restrict creation to maintainers.
+
+4. Trimmed workflow set
+
+You said pure-Python (no C extensions) and MkDocs — so drop cibuildwheel and drop Sphinx. That leaves three workflows (plus optional Docker).
+
+.github/workflows/ci.yml
+
+(unchanged from earlier — see previous message)
+
+.github/workflows/release.yml
+
+```yaml
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, 'chore(release):')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install release tooling
+        run: pip install python-semantic-release build
+
+      - name: Semantic release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          semantic-release version
+          semantic-release publish
+
+      - name: Build
+        if: steps.release.outputs.released == 'true'
+        run: python -m build
+
+      - name: Publish to PyPI
+        if: steps.release.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          attestations: true
+          skip-existing: true
+```
+
+The if: "!contains(...)" guard prevents infinite loops — semantic-release pushes a chore(release): commit, which would otherwise retrigger the workflow.
+
+.github/workflows/docs.yml
+
+```yaml
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "src/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install -e ".[dev]"
+          pip install mkdocs-material "mkdocstrings[python]"
+
+      - name: Build & deploy
+        run: mkdocs gh-deploy --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+.github/workflows/docker.yml (delete if unused)
+
+Same as the earlier GHCR workflow — triggers on push: tags: ['v*'].
+
+---
+
+First-run checklist
+
+1. git init and push the skeleton above to main on GitHub.
+2. Add a pending trusted publisher on PyPI and TestPyPI:
+   · Owner: YOURUSER, Repo: myproject, Workflow: release.yml, Environment: pypi (or testpypi).
+3. Create the pypi environment in Settings → Environments with yourself as reviewer.
+4. Create the pypi/testpypi environment names to match exactly.
+5. Push a commit like feat: initial release to main — semantic-release will bump to 0.1.0, tag v0.1.0, create a GitHub Release, and publish to PyPI.
+6. Verify docs at https://YOURUSER.github.io/myproject/ after the first docs.yml run.
+
+Everything here is pure-Python and MkDocs-specific, so there's no wheel matrix to maintain and no Sphinx config to fight. If you later add a C extension, add back the build_wheels.yml from the earlier message and switch release.yml to consume its artifacts instead of building inline.
+Here's each of the six first-run steps expanded with exact commands, UI paths, and the gotchas that bite people.
+
+---
+
+Step 1 — Initialize and push the skeleton
+
+Local setup
+
+```bash
+# Create the project directory
+mkdir myproject && cd myproject
+
+# Create the directory tree
+mkdir -p .github/workflows docs src/myproject tests
+
+# Create placeholder files
+touch src/myproject/__init__.py src/myproject/py.typed
+touch tests/__init__.py tests/test_smoke.py
+touch docs/index.md docs/api.md
+touch README.md CHANGELOG.md LICENSE mkdocs.yml pyproject.toml
+touch .gitignore
+
+# Initialize git
+git init -b main
+git add -A
+git commit -m "chore: initial scaffold"
+```
+
+Minimal .gitignore:
+
+```gitignore
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+site/
+.idea/
+.vscode/
+.DS_Store
+```
+
+Create the repo on GitHub
+
+Option A (gh CLI):
+
+```bash
+gh repo create YOURUSER/myproject --public --source=. --remote=origin --push
+```
+
+Option B (web UI):
+
+1. github.com → New repository
+2. Name: myproject, visibility: Public, do not initialize with README/gitignore/license (you already have them)
+3. Copy the git remote add origin … command GitHub shows:
+
+```bash
+git remote add origin git@github.com:YOURUSER/myproject.git
+git push -u origin main
+```
+
+Gotcha: If you use SSH, make sure your key is loaded (ssh-add -l). If you use HTTPS, you'll need a PAT, not your password.
+
+---
+
+Step 2 — Add the pending trusted publisher on PyPI
+
+You must do this before the first workflow run, otherwise the upload fails with invalid-publisher.
+
+On PyPI
+
+1. Go to https://pypi.org/manage/account/publishing/
+2. Under Add a new pending publisher, fill in:
+   · PyPI project name: myproject (must match [project].name in pyproject.toml exactly — case-sensitive, hyphens vs underscores matter)
+   · Owner: YOURUSER (GitHub username/org, exactly)
+   · Repository name: myproject
+   · Workflow name: release.yml
+   · Environment name: pypi
+3. Click Add
+
+On TestPyPI (do this too)
+
+Same steps at https://test.pypi.org/manage/account/publishing/ but use environment testpypi.
+
+Gotchas
+
+· The project name must not exist yet for a pending publisher. If myproject is taken on PyPI, either rename your package or claim the name first.
+· Environment name is case-sensitive. pypi ≠ PyPI. Match the workflow exactly.
+· The workflow filename must be the file's base name (release.yml), not the path.
+· If you already own the project on PyPI, you must add the publisher from Manage project → Publishing instead — the pending publisher path is only for packages that don't exist yet.
+
+---
+
+Step 3 — Create the pypi environment in GitHub
+
+1. GitHub repo → Settings → Environments → New environment
+2. Name: pypi → Configure environment
+3. Under Deployment protection rules:
+   · ✅ Required reviewers → add yourself (and any co-maintainers)
+   · ✅ Prevent self-review (optional but recommended if you have >1 maintainer)
+4. Under Deployment branches and tags:
+   · Select Selected branches and tags
+   · Add a branch rule: main
+   · Add a tag rule: v*
+5. Click Save protection rules
+
+Repeat for testpypi (no reviewers needed — it's a sandbox).
+
+Gotchas
+
+· If you forget the environment, the OIDC token has no environment claim and PyPI rejects it.
+· If required reviewers are set, the workflow pauses on the deploy step and waits for you to click Review deployments in the Actions UI — this is expected.
+· Environment secrets/vars are only visible inside jobs that declare environment: pypi.
+
+---
+
+Step 4 — Verify environment names match
+
+This is where silent failures live. The three places must agree:
+
+Location Value
+release.yml → job → environment: name: pypi
+PyPI pending publisher → Environment name pypi
+GitHub Settings → Environments pypi
+
+Same for testpypi. Quick grep:
+
+```bash
+grep -R "environment" .github/workflows/
+grep -R "pypi\|testpypi" .github/workflows/
+```
+
+Also confirm the workflow filename:
+
+```bash
+ls .github/workflows/
+# release.yml, ci.yml, docs.yml, docker.yml
+```
+
+If you renamed anything, update the pending publisher on PyPI (you can delete and re-add).
+
+Gotcha: Renaming the workflow file later breaks trusted publishing. If you rename release.yml → publish.yml, you must update the publisher on PyPI first.
+
+---
+
+Step 5 — Trigger the first release
+
+Make sure CI passes first
+
+Push a trivial commit and watch ci.yml:
+
+```bash
+git commit --allow-empty -m "chore: trigger ci"
+git push
+```
+
+Go to Actions → CI. All four Python versions should be green. If not, fix before proceeding — the release workflow will not gate on CI by default (you'd need workflow_run for that).
+
+Trigger the release
+
+Semantic-release only reacts to conventional commits on main. Make one:
+
+```bash
+# Edit something real, e.g. add a function
+cat > src/myproject/__init__.py <<'EOF'
+"""myproject — short description."""
+
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("myproject")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
+
+def hello() -> str:
+    """Return a friendly greeting."""
+    return "hello, world"
+
+__all__ = ["__version__", "hello"]
+EOF
+
+git add src/myproject/__init__.py
+git commit -m "feat: add hello() function"
+git push
+```
+
+What should happen
+
+1. Actions → Release starts.
+2. semantic-release version runs:
+   · Detects feat: → bumps 0.1.0 → 0.2.0 (or 0.1.0 if starting from nothing)
+   · Updates pyproject.toml, creates a commit chore(release): 0.2.0
+   · Tags v0.2.0
+   · Pushes both
+3. semantic-release publish creates the GitHub Release and updates CHANGELOG.md.
+4. Build runs → dist/myproject-0.2.0.tar.gz + .whl.
+5. Publish job pauses for your approval (if reviewers are set) → click Review deployments → Approve.
+6. Package appears at https://pypi.org/project/myproject/0.2.0/.
+
+Gotchas
+
+· If you skip the feat:/fix: prefix, semantic-release does nothing. Test locally first:
+  ```bash
+  pip install python-semantic-release
+  semantic-release --noop version
+  ```
+· First run may fail with no version found if the current version in pyproject.toml isn't a valid starting point. 0.1.0 is fine.
+· GITHUB_TOKEN can't push tags if the tag is protected by another rule. Check Settings → Tags.
+· If the workflow runs twice and the second fails on "tag already exists", add the if: "!contains(github.event.head_commit.message, 'chore(release):')" guard (already in the workflow) — it prevents re-triggering on the release commit.
+
+---
+
+Step 6 — Verify docs deploy
+
+First successful build
+
+1. Push any commit touching docs/, mkdocs.yml, or src/**:
+   ```bash
+   echo "# API" > docs/api.md
+   git add docs/api.md
+   git commit -m "docs: add api page"
+   git push
+   ```
+2. Actions → Docs runs mkdocs gh-deploy --force, which pushes a gh-pages branch.
+3. Go to Settings → Pages:
+   · Source: Deploy from a branch
+   · Branch: gh-pages / / (root)
+   · Save
+4. After ~1 minute, docs are live at https://YOURUSER.github.io/myproject/.
+
+Custom domain (optional)
+
+If you want docs.example.com:
+
+1. In docs/, create CNAME containing docs.example.com.
+2. In Settings → Pages → Custom domain, enter the same.
+3. Add a DNS CNAME record: docs → YOURUSER.github.io.
+4. Enable Enforce HTTPS.
+
+Gotchas
+
+· mkdocs gh-deploy overwrites the gh-pages branch on every run. If you put non-MkDocs files there manually, they'll be wiped. Use actions/deploy-pages if you need full control.
+· mkdocstrings needs the package importable. That's why the workflow does pip install -e ".[dev]" before building. If your docs import a package that isn't installed, the build fails.
+· First run is often red because mkdocs.yml references files that don't exist yet (api.md, index.md). Create empty placeholders:
+  ```bash
+  echo "# myproject" > docs/index.md
+  echo "# API Reference" > docs/api.md
+  ```
+· site_url mismatch — if site_url in mkdocs.yml doesn't match where Pages serves it, links break. Match it to https://YOURUSER.github.io/myproject/.
+· Private repos: GitHub Pages requires a public repo on Free plans. Either make the repo public or upgrade.
+
+---
+
+After all six steps: the steady-state loop
+
+Once everything is wired, day-to-day is:
+
+```bash
+git checkout -b feat/some-feature
+# …make changes…
+git commit -m "feat: add some feature"
+git push -u origin feat/some-feature
+gh pr create --fill     # or open PR in UI
+
+# PR runs CI → merge to main
+# Release workflow bumps version, tags, publishes to PyPI, updates changelog
+# Docs workflow rebuilds the site
+```
+
+You only touch PyPI/GitHub settings again if you:
+
+· Rename the workflow file
+· Rename the repo
+· Move to a different GitHub org
+· Add a new environment (e.g. pypi-staging)
+
+If any of the six steps fails, paste the exact error from the Actions log and I'll pinpoint it.👍 You're set. Ping me when you hit the first error or want to extend the setup (C extensions, type stubs, TestPyPI dry-run, custom domain, etc.).

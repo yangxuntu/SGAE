@@ -1,0 +1,852 @@
+Item 6: OS matrix. Adding Windows and macOS legs catches platform-specific bugs — path handling, line endings, fork() vs spawn, native deps, subprocess behavior — that a Linux-only matrix will never surface.
+
+1. The naive change (and why it's expensive)
+
+You could just extend the existing matrix:
+
+```yaml
+matrix:
+  os: [ubuntu-latest, windows-latest, macos-latest]
+  python-version: [ "3.10", "3.11", "3.12" ]
+```
+
+That's 9 jobs, each ~2–5 min → ~30 min of runner time per push, and macOS runners bill at 10× the Linux rate on private repos. For most projects that's overkill.
+
+2. Recommended approach: hybrid matrix
+
+Run the full Python matrix on Linux, and a single representative Python version on Windows and macOS:
+
+```yaml
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Full Python matrix on Linux
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          # One representative version on Windows and macOS
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Test with pytest
+        shell: bash
+        run: pytest --cov=. --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+```
+
+That gives you 5 jobs instead of 9, still covering all three OSes, and only one coverage upload.
+
+Key details
+
+· shell: bash on all steps. Windows defaults to PowerShell, which breaks if [ -f requirements.txt ]. Forcing bash (Git Bash ships with every Windows runner) makes the same commands work everywhere.
+· if: matrix.os == 'ubuntu-latest' && ... — only upload coverage once. Otherwise three Codecov uploads race and you get confusing merge behavior.
+· fail-fast: false — keep it, so a Windows-only failure doesn't cancel the other legs while you're debugging.
+· setup-python cache works on all three OSes with cache: 'pip'; it keys off your requirements*.txt / pyproject.toml hashes.
+
+3. Update branch protection
+
+Required checks now include the new names:
+
+· Lint
+· Test (ubuntu-latest, Python 3.10)
+· Test (ubuntu-latest, Python 3.11)
+· Test (ubuntu-latest, Python 3.12)
+· Test (windows-latest, Python 3.12)
+· Test (macos-latest, Python 3.12)
+· Security
+
+The names must match exactly. Since you're using ${{ matrix.os }} and ${{ matrix.python-version }} in the job name, the strings will be ubuntu-latest, windows-latest, macos-latest — not Linux, Windows, etc. Update the ruleset JSON (item 5) to match, or merges will silently stop being blocked by the OS legs.
+
+4. Common platform pitfalls this catches
+
+· Path separators — hardcoded / in file paths fails on Windows.
+· Case sensitivity — macOS and Windows are case-insensitive by default; import Foo vs foo.py passes there but fails on Linux.
+· Line endings — git core.autocrlf=true on Windows changes \n to \r\n. Add a .gitattributes if you read/write fixtures:
+  ```
+  * text=auto eol=lf
+  *.png binary
+  ```
+· fork() vs spawn — multiprocessing defaults differ; passing unpicklable objects works on Linux, fails on Windows/macOS.
+· Signal handling — SIGKILL, SIGHUP don't exist on Windows; signal.SIGTERM behaves differently.
+· Native extension builds — wheels that exist for Linux may not exist for macOS arm64 (macos-latest is Apple Silicon since late 2023). Missing wheels → source build → often fails.
+· File locking — Windows locks open files, so os.remove() on a file another handle holds raises PermissionError.
+
+If your project is pure-Python and has no OS-specific code, the Windows/macOS legs will be green forever and just burn minutes. In that case, use option 2's include: list but skip the extra legs entirely — don't add an OS matrix you don't need.
+
+5. macOS architecture note
+
+macos-latest is Apple Silicon (arm64) since GitHub switched the default in 2023. If you support Intel Macs, add an explicit leg:
+
+```yaml
+          - os: macos-13        # Intel
+            python-version: "3.12"
+          - os: macos-latest    # Apple Silicon
+            python-version: "3.12"
+```
+
+macos-13 is the last Intel image GitHub publishes; keep an eye on deprecation notices.
+
+6. Save minutes: skip docs-only changes
+
+OS matrices are the expensive part of CI. Add a path filter to the whole workflow or a specific job so README tweaks don't spin up 5 runners:
+
+```yaml
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+  pull_request:
+    branches: [ "main", "master" ]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'LICENSE'
+```
+
+Caveat from item 5: if test is a required check, paths-ignore will make the check never report on docs-only PRs — which blocks the merge forever. Two options:
+
+1. Don't use paths-ignore on required workflows.
+2. Add an "always-pass" stub job that runs when the real job is skipped:
+
+```yaml
+  test-stub:
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.changed_files, '') == false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "no code changes"
+```
+
+Option 1 is simpler. Most teams just accept a couple of wasted runner minutes on README PRs.
+
+7. Full workflow, assembled
+
+```yaml
+name: Python application
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install pre-commit
+      - uses: pre-commit/action@v3.0.1
+      - name: Flake8 — syntax and undefined names
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: Flake8 — style report
+        run: flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Test with pytest
+        shell: bash
+        run: pytest --cov=. --cov-report=xml --cov-report=term-missing
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install bandit[toml] pip-audit
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Bandit — static analysis
+        run: bandit -c pyproject.toml -r . -ll -f sarif -o bandit.sarif || true
+      - name: Upload Bandit SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit.sarif
+          category: bandit
+      - name: pip-audit — CVE scan
+        run: pip-audit --strict --desc on
+```
+
+8. Cost sanity check
+
+Rough runner-minute cost per push (public repo → free; private repo → billed):
+
+Config Jobs Avg min/job Total min Notes
+Linux-only 3.10/3.11/3.12 3 3 9 baseline
++ Windows 3.12 4 5 15 Windows ~1.5× slower
++ macOS 3.12 5 4 25 macOS billed at 10×
+Full 3×3 9 4 36 usually not worth it
+
+If your project has no OS-specific code, the two extra legs are pure overhead. Add them when you have a reason — a bug report from Windows, a native dep, path-sensitive code — not by default.
+
+9. Gotchas recap
+
+· shell: bash on Windows is non-negotiable for if [ -f ... ] style commands.
+· Required check names change when you change the job name — update branch protection / ruleset JSON in the same PR.
+· paths-ignore + required checks = deadlock. Pick one.
+· macos-latest is arm64. If you need Intel, pin macos-13 and watch for its EOL.
+· Cache keys are per-OS automatically with setup-python@v5 — you don't need to do anything, but be aware caches don't share across OSes.
+· Case-insensitive filesystems on macOS/Windows hide import bugs that Linux catches. Don't rely on the extra legs to find them; keep the Linux leg.
+· Line endings creep in via git on Windows. A .gitattributes with * text=auto eol=lf prevents most of it.
+
+---
+
+Next → item 7: caching improvements — moving beyond cache: 'pip' for Poetry/uv/pip-tools, caching pytest/lint artifacts, and how to key caches correctly so they don't go stale. Or say the word if you'd rather jump to something else.Item 7: caching improvements. cache: 'pip' on setup-python@v5 is a good start, but it only handles pip. Here's how to cache the rest — and, more importantly, how to key caches so they don't go stale or silently miss.
+
+1. What cache: 'pip' actually does
+
+It hashes your requirements*.txt / pyproject.toml / poetry.lock (whichever it finds) and caches ~/.cache/pip. If none of those files exist, it doesn't cache anything and doesn't warn — a silent miss. Confirm the file it's keying off actually exists in your repo:
+
+```
+✅ requirements.txt
+✅ requirements-dev.txt
+✅ pyproject.toml
+❌ setup.py only   ← not hashed by default
+```
+
+If you use setup.py or setup.cfg with install_requires, add them to the hash:
+
+```yaml
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements*.txt
+            setup.py
+            setup.cfg
+            pyproject.toml
+```
+
+The cache-dependency-path field accepts globs and multiple files. Use it whenever your dependency source isn't one of the defaults.
+
+2. Poetry, uv, and pip-tools
+
+cache: 'pip' doesn't help if you're not using pip to install. Switch the cache type per tool.
+
+Poetry
+
+```yaml
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'poetry'                    # ← caches ~/.cache/pypoetry
+          cache-dependency-path: poetry.lock
+
+      - run: poetry install --no-interaction --no-root
+      - run: poetry run pytest --cov=. --cov-report=xml
+```
+
+cache: 'poetry' handles the wheel cache; the poetry.lock hash handles invalidation. You don't need a separate actions/cache step.
+
+uv
+
+setup-python doesn't have a cache: 'uv' option yet, so cache manually:
+
+```yaml
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true                 # ← uv's own action handles caching
+          cache-dependency-glob: "uv.lock"
+
+      - run: uv sync --frozen
+      - run: uv run pytest --cov=. --cov-report=xml
+```
+
+astral-sh/setup-uv has built-in caching with sensible defaults. Prefer it over hand-rolling actions/cache.
+
+pip-tools (requirements.in → requirements.txt)
+
+Compiled requirements don't change often, so cache on the compiled file, not the source:
+
+```yaml
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+```
+
+If you also run pip-compile in CI, cache ~/.cache/pip-tools separately.
+
+3. Cache things beyond dependencies
+
+Three caches pay off almost immediately:
+
+pytest cache (~/.cache/pytest)
+
+Speeds up --lf / --ff runs. Rarely useful in CI (fresh checkout each time), so skip this unless you use actions/cache to persist across runs, which is fiddly. Not worth it for most projects.
+
+pre-commit hooks (~/.cache/pre-commit)
+
+This one is worth caching. Each hook is a separate git repo + venv; the first run on a cold cache is slow.
+
+pre-commit/action@v3.0.1 uses actions/setup-python's cache: 'pip' for pip, but not for ~/.cache/pre-commit. Add it explicitly:
+
+```yaml
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
+
+      - uses: pre-commit/action@v3.0.1
+```
+
+Key points:
+
+· Key includes the config hash — changing .pre-commit-config.yaml (bumping a rev:) invalidates the cache.
+· restore-keys prefix lets a partial match restore from the previous config; pre-commit will re-fetch only what changed.
+· runner.os in the key — cache entries are OS-specific; without this, a Windows runner might restore a Linux cache and fail.
+
+mypy / pyright cache
+
+If you run mypy in CI (via pre-commit or standalone), cache its incremental database:
+
+```yaml
+      - name: Cache mypy
+        uses: actions/cache@v4
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'requirements*.txt') }}
+          restore-keys: |
+            mypy-${{ runner.os }}-
+```
+
+4. Keying rules that prevent stale caches
+
+Cache bugs are subtle — a wrong key means you silently get stale deps and green CI that would fail on a clean install. Three rules:
+
+Rule 1: hash the lockfile, not the manifest.
+
+```yaml
+# ❌ changes only when you add a top-level dep
+key: deps-${{ hashFiles('requirements.in') }}
+
+# ✅ changes whenever any resolved version changes
+key: deps-${{ hashFiles('requirements.txt') }}
+```
+
+Use requirements.txt (compiled), poetry.lock, or uv.lock — not requirements.in / pyproject.toml alone.
+
+Rule 2: always include runner.os.
+GitHub caches are per-OS and per-repo, but if you build the key yourself, forgetting the OS segment means a macOS runner can restore a Linux cache. Always:
+
+```yaml
+key: <name>-${{ runner.os }}-${{ hashFiles(...) }}
+```
+
+Rule 3: restore-keys is a prefix, not a fallback list.
+
+```yaml
+restore-keys: |
+  pre-commit-${{ runner.os }}-
+```
+
+This means "restore the most recent cache whose key starts with pre-commit-ubuntu-latest-". It doesn't try each line as a separate key; it tries prefixes in order, newest first. Order matters when you have multiple prefixes.
+
+5. When a cache goes bad
+
+If a cache is poisoned (bad wheel, interrupted download), you can't invalidate it in the UI. Options:
+
+· Bump a version suffix in the key: deps-v2-${{ runner.os }}-${{ hashFiles(...) }}
+· Delete via API:
+  ```bash
+  gh cache delete --all
+  gh cache list
+  ```
+· Cache size limit: 10 GB per repo, evicted LRU after 7 days of no access. A big ~/.cache/pip from a monorepo can push out other caches — watch for that.
+
+6. What's actually worth caching
+
+Cache Worth it? Why
+~/.cache/pip ✅ always biggest win, setup-python handles it
+Poetry / uv wheels ✅ if using them avoids re-download
+~/.cache/pre-commit ✅ if using pre-commit cold run is 30–60s
+.mypy_cache ✅ if mypy in CI 2–5× speedup on re-runs
+~/.cache/pytest ❌ usually not fresh checkout each run
+.pytest_cache in repo ❌ same reason
+__pycache__ ❌ rebuilt fast, adds IO
+Bandit / pip-audit caches ❌ tiny, network-bound
+
+If you cache nothing else, cache ~/.cache/pre-commit and let setup-python@v5 handle pip.
+
+7. Full workflow with expanded caching
+
+```yaml
+name: Python application
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements*.txt
+            pyproject.toml
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
+
+      - run: |
+          python -m pip install --upgrade pip
+          pip install pre-commit
+
+      - uses: pre-commit/action@v3.0.1
+
+      - name: Flake8 — syntax and undefined names
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: Flake8 — style report
+        run: flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Test with pytest
+        shell: bash
+        run: pytest --cov=. --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+          cache-dependency-path: requirements*.txt
+
+      - run: |
+          python -m pip install --upgrade pip
+          pip install bandit[toml] pip-audit
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Bandit — static analysis
+        run: bandit -c pyproject.toml -r . -ll -f sarif -o bandit.sarif || true
+      - name: Upload Bandit SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit.sarif
+          category: bandit
+      - name: pip-audit — CVE scan
+        run: pip-audit --strict --desc on
+```
+
+8. Gotchas
+
+· Silent no-op caches. cache: 'pip' with no matching dependency file caches nothing and doesn't warn. Always set cache-dependency-path if your deps don't live in requirements.txt / pyproject.toml.
+· Cross-OS cache pollution. GitHub isolates caches per OS at the storage layer, but if you build custom actions/cache keys, forgetting ${{ runner.os }} means a Linux wheel can land on Windows.
+· actions/cache@v4 is the current major. v2/v3 are deprecated and will be shut off; if you have old workflows with v2, upgrade now.
+· Cache-miss ≠ cache-key-miss. If the restore succeeds but the restore-key prefix doesn't match the exact key, you get a partial restore — usually what you want, but occasionally the source of "works locally, fails in CI" mysteries. Test by temporarily deleting the cache via gh cache delete.
+· Monorepo bloat. A 10 GB cap per repo, LRU eviction. Big pip caches can evict your pre-commit cache; if you see flapping, split caches across jobs or scope more narrowly.
+· Don't cache dist/ or build/. They're build outputs, not dependencies — caching them causes stale-wheel bugs.
+
+---
+
+Next → item 8: scheduled runs (nightly cron) to catch dependency rot, plus how to make the security job run daily without spamming PRs. Or tell me to jump elsewhere.Item 8: scheduled runs. Nightly (or weekly) CI catches things that push/PR triggers can't — dependency rot, upstream CVE disclosures, breaking changes in transitive deps, and OS image updates that silently change your environment.
+
+1. Why schedule a run at all
+
+Push/PR triggers only fire when you change something. That means:
+
+· A CVE drops in a dependency you've been happily using for six months — you won't know until the next PR happens to run.
+· A transitive dep gets yanked from PyPI — your cached wheel keeps working until it doesn't.
+· GitHub rotates the ubuntu-latest image and Python 3.10's openssl version changes — you find out on your next release PR.
+· A Dependabot PR sits unmerged for weeks and you don't notice the world moved.
+
+A nightly run gives you a known-good baseline independent of your commit cadence.
+
+2. Cron syntax on GitHub Actions
+
+```yaml
+on:
+  schedule:
+    - cron: "0 3 * * *"     # 03:00 UTC daily
+```
+
+Rules that trip people up:
+
+· Always UTC. No timezone field. 0 3 * * * is 3am UTC — 7pm PT previous day, 4am CET, 11am JST. Pick a slot that overlaps someone's workday, or at least a slot where a human will see a red build before Monday.
+· Minimum interval is 5 minutes (*/5 * * * *). Anything finer is silently rounded.
+· Schedules are best-effort. GitHub delays runs during peak load; a "3am" job often starts at 3:15–3:40. Don't build anything that depends on the exact start time.
+· Scheduled workflows only run on the default branch. If your default is main, a schedule on a feature branch won't fire. This also means git push to master-named default still works but the cron entry must be on the default branch's copy of the file.
+· 60-day inactivity auto-disable. If nobody pushes to the repo for 60 days, GitHub pauses all scheduled workflows and emails the repo admins. You must re-enable manually (or push a commit). For low-traffic repos, add a "keepalive" job that pushes an empty commit monthly, or use the gautamkrishnar/keepalive-workflow action.
+
+3. Don't just add schedule: to the CI workflow
+
+If you add schedule: to python-app.yml, the full OS matrix, lint, and security jobs all run nightly. That's usually overkill — the OS legs exist to catch platform bugs on new code, not to re-verify a static repo every night.
+
+Two better patterns:
+
+Pattern A: separate nightly.yml — focused, cheap, one job.
+
+Pattern B: gate jobs on the trigger.
+
+```yaml
+  test-full:
+    if: github.event_name != 'schedule'
+  test-quick:
+    if: github.event_name == 'schedule'
+```
+
+Pattern A is cleaner. Most projects do this.
+
+4. Recommended nightly workflow
+
+.github/workflows/nightly.yml
+
+```yaml
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"     # 03:00 UTC daily
+  workflow_dispatch:        # allow manual trigger from the Actions tab
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false   # don't kill a nightly mid-flight
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+          cache-dependency-path: requirements*.txt
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: pip-audit — CVEs against today's advisory DB
+        run: pip-audit --strict --desc on
+
+  freshness-test:
+    name: Install with latest allowed deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          # Note: no pip cache — we deliberately want fresh downloads.
+
+      - name: Install with --upgrade
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          if [ -f requirements.txt ]; then
+            # Ignore pins, get whatever is newest that satisfies specifiers.
+            pip install --upgrade -r requirements.txt
+          fi
+
+      - name: Test
+        run: pytest -q
+
+  # Optional: notify on failure so it doesn't silently go red for a week.
+  notify:
+    name: Notify on failure
+    needs: [dependency-audit, freshness-test]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open or update tracking issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "Nightly build failing";
+            const body = `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "nightly-failure",
+            });
+            if (issues.length) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues[0].number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["nightly-failure"],
+              });
+            }
+```
+
+What each job is doing
+
+dependency-audit — same as your security job but without the Bandit source scan. Source code doesn't change overnight; CVEs do. Runs pip-audit --strict, which will fail the moment a new advisory hits.
+
+freshness-test — installs deps without honoring the lock/pin, then runs the test suite. This is what catches "your >=1.2,<2 constraint is now satisfied by a broken 1.9.3". Skipping the pip cache is deliberate — you want fresh PyPI downloads.
+
+notify — a failure that nobody sees is worse than no CI. This opens (or comments on) a tracked issue so it shows up in your repo's Issues tab, not just buried in Actions history.
+
+If you don't want issue churn, swap the notify job for a Slack webhook:
+
+```yaml
+      - name: Slack alert
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
+          payload: |
+            {"text": "Nightly failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
+```
+
+5. Weekly instead of nightly
+
+Nightly is great for the security job, less so for the freshness test — you rarely want to know about a dep regression on a Saturday. A common split:
+
+```yaml
+on:
+  schedule:
+    - cron: "0 3 * * *"     # daily: security only
+    - cron: "0 6 * * 1"     # Monday 06:00 UTC: full freshness + audit
+```
+
+Then gate:
+
+```yaml
+jobs:
+  security:
+    if: github.event.schedule == '0 3 * * *' || github.event_name == 'workflow_dispatch'
+  freshness:
+    if: github.event.schedule == '0 6 * * 1' || github.event_name == 'workflow_dispatch'
+```
+
+github.event.schedule contains the cron string that fired, so you can branch on it. workflow_dispatch is included so a manual run executes both.
+
+6. Making scheduled runs and branch protection coexist
+
+If your default branch requires status checks like Test (ubuntu-latest, Python 3.12), a nightly run that fires on the default branch will report those checks — but they'll overwrite the last PR's results in the checks UI. Usually harmless. Where it does bite:
+
+· Stale checks block merges. A PR opened right before the nightly run can pick up "the nightly's" check state and get stuck if the nightly fails for an unrelated reason. Mitigation: keep scheduled workflows out of the required-checks namespace — name the nightly jobs differently (Nightly: audit, Nightly: freshness) so they don't collide with Test (...).
+· Force-pushing the default branch (e.g. from the keepalive bot) resets all check history. Don't do that on protected branches.
+
+The clean rule: scheduled workflows should never produce a check name that's in your required-checks list.
+
+7. Keepalive for quiet repos
+
+If your repo has weeks of no pushes and you want the nightly cron to keep firing past 60 days:
+
+```yaml
+name: Keepalive
+
+on:
+  schedule:
+    - cron: "0 0 1 * *"     # 1st of each month
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Empty commit to reset the 60-day timer
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "chore: keepalive"
+          git push
+```
+
+Caveat: if the default branch is protected against direct pushes, this will fail. Either add the GitHub Actions bot to the ruleset bypass list, or use the gautamkrishnar/keepalive-workflow action which handles this via workflow dispatch.
+
+Alternatively, just accept the disable and re-enable from Actions → Nightly → Enable workflow when you notice. For active repos it's a non-issue.
+
+8. Gotchas recap
+
+· Cron is UTC and best-effort. Don't depend on exact timing; don't schedule at :00 if it matters (load spikes around the hour — use :17 or :41).
+· Schedules only run from the default branch. Feature-branch copies are ignored.
+· 60-day inactivity disables schedules. Add a keepalive if your repo is quiet.
+· on: schedule alone gives you no manual trigger. Always pair with workflow_dispatch.
+· Don't mix nightly into the required-checks namespace. Name nightly jobs distinctly.
+· concurrency.cancel-in-progress: false for scheduled runs — a nightly run shouldn't be killed by the next one starting, especially if it's the security scan.
+· A red nightly that nobody sees is a green nightly. Add the notify job or a webhook.

@@ -1,0 +1,246 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+# This workflow will build a package using Gradle and then publish it to GitHub packages when a release is created
+# For more information see: https://github.com/actions/setup-java/blob/main/docs/advanced-usage.md#Publishing-using-gradle
+
+name: Gradle Package
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        server-id: github # Value of the distributionManagement/repository/id field of the pom.xml
+        settings-path: ${{ github.workspace }} # location for the settings.xml file
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
+
+    - name: Build with Gradle
+      run: ./gradlew build
+
+    # The USERNAME and TOKEN need to correspond to the credentials environment variables used in
+    # the publishing section of your build.gradle
+    - name: Publish to GitHub Packages
+      run: ./gradlew publish
+      env:
+        USERNAME: ${{ github.actor }}
+        TOKEN: ${{ secrets.GITHUB_TOKEN }}
+Gradle Publish Workflow Analysis
+
+This is GitHub's default template for publishing a Gradle package to GitHub Packages when a release is created. Here's a breakdown and some potential issues to watch for.
+
+What it does
+
+1. Trigger: Runs when a GitHub release is created
+2. Environment: Ubuntu latest, JDK 17 (Temurin), with contents: read and packages: write permissions
+3. Steps:
+   · Checks out the repo
+   · Sets up JDK 17 with GitHub Packages as the server
+   · Installs Gradle
+   · Runs ./gradlew build
+   · Runs ./gradlew publish using USERNAME/TOKEN env vars
+
+Things to check / likely issues
+
+1. USERNAME and TOKEN env var names must match build.gradle
+
+The workflow exposes credentials as USERNAME and TOKEN. Your build.gradle(.kts) publishing block must reference exactly those names, e.g.:
+
+```groovy
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/OWNER/REPO")
+            credentials {
+                username = System.getenv("USERNAME")
+                password = System.getenv("TOKEN")
+            }
+        }
+    }
+}
+```
+
+Note: USERNAME is risky — on Linux runners USER is already set, and some Gradle plugins read USERNAME too. Consider renaming to GITHUB_ACTOR / GITHUB_TOKEN directly to avoid confusion.
+
+2. Missing settings.xml-based credentials
+
+You set server-id: github and settings-path, but that only helps Maven publishing, not Gradle. For Gradle you're relying on env vars — fine, just make sure they're wired up as above.
+
+3. Release type — usually you want published, not created
+
+```yaml
+on:
+  release:
+    types: [created]
+```
+
+created fires even for draft releases (which aren't public and often shouldn't be published). Most projects use:
+
+```yaml
+on:
+  release:
+    types: [published]
+```
+
+4. ./gradlew publish publishes all repositories
+
+If your build also declares a non-GitHub repo (e.g. Maven Central), publish will try them all and fail. Safer:
+
+```yaml
+- name: Publish to GitHub Packages
+  run: ./gradlew publishAllPublicationsToGitHubPackagesRepository
+```
+
+(or whatever your repo is named).
+
+5. GITHUB_TOKEN scope
+
+The default token can push to the same repo's packages only. If you publish to another repo's namespace (e.g. a shared org namespace), you need a PAT stored as a secret.
+
+6. Version sanity
+
+GITHUB_REF on release events is a tag like v1.2.3. If your build derives version from git tags, make sure the v prefix is stripped — many Gradle release plugins expect the version without v.
+
+7. Permissions: packages: write alone may be insufficient
+
+Add id-token: write if you later switch to Trusted Publishing, and contents: read is fine as-is.
+
+Suggested cleaner version
+
+```yaml
+name: Gradle Package
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        run: ./gradlew build
+
+      - name: Publish to GitHub Packages
+        run: ./gradlew publishAllPublicationsToGitHubPackagesRepository
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Then in build.gradle use System.getenv("GITHUB_ACTOR") / System.getenv("GITHUB_TOKEN").
+
+If you tell me what's failing (error message, your build.gradle publishing block), I can pinpoint the exact fix.
+Assuming you mean the next GitHub Actions starter workflow after gradle-publish.yml, here’s the standard gradle.yml (Java CI with Gradle):
+
+```yaml
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+# This workflow will build a Java project with Gradle and cache/restore any dependencies to improve the workflow execution time
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-java-with-gradle
+
+name: Java CI with Gradle
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    # Configure Gradle for optimal use in GitHub Actions, including caching of downloaded dependencies.
+    # See: https://github.com/gradle/actions/blob/main/setup-gradle/README.md
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
+
+    - name: Build with Gradle
+      run: ./gradlew build
+
+    # NOTE: The Gradle Wrapper is the default and recommended way to run Gradle (https://docs.gradle.org/current/userguide/gradle_wrapper.html).
+    # If your project does not have the Gradle Wrapper configured, you can use the following configuration to run Gradle with a specified version.
+    #
+    # - name: Setup Gradle
+    #   uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
+    #   with:
+    #     gradle-version: '8.9'
+    #
+    # - name: Build with Gradle 8.9
+    #   run: gradle build
+
+  dependency-submission:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    # Generates and submits a dependency graph, enabling Dependabot Alerts for all project dependencies.
+    # See: https://github.com/gradle/actions/blob/main/dependency-submission/README.md
+    - name: Generate and submit dependency graph
+      uses: gradle/actions/dependency-submission@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
+```
+
+Key differences from gradle-publish.yml
+
+· Triggers on push/PR to main, not releases.
+· Only needs contents: read for the build job.
+· Adds a separate dependency-submission job with contents: write to enable Dependabot alerts.
+· Does not publish artifacts — that’s what gradle-publish.yml is for.
+
+Want me to move on to maven-publish.yml next, or analyze this one the same way I did for gradle-publish.yml?

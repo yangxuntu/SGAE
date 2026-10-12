@@ -1,0 +1,730 @@
+name: Clojure CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: lein deps
+    - name: Run tests
+      run: lein test
+Here's a review of your Clojure CI workflow with some suggested improvements:
+
+Issues & Suggestions
+
+1. Missing JDK setup
+
+GitHub's ubuntu-latest runner has Java, but relying on the default version is fragile. Pin it explicitly:
+
+```yaml
+- uses: actions/setup-java@v4
+  with:
+    distribution: 'temurin'
+    java-version: '21'
+```
+
+2. Missing Leiningen installation
+
+You're calling lein deps but never installing Leiningen. Ubuntu runners don't ship with it by default (they have clojure/clj but not lein).
+
+3. No caching
+
+Re-downloading all Maven deps on every run is slow.
+
+4. No --batch flag for Leiningen
+
+CI environments should use lein --batch or LEIN_FAST_TRAMPOLINE=1 to avoid interactive prompts and speed things up.
+
+5. No test reporting
+
+Consider adding test result output for better CI visibility.
+
+Improved Version
+
+```yaml
+name: Clojure CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Leiningen
+        uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          lein: 'latest'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.lein
+          key: ${{ runner.os }}-lein-${{ hashFiles('project.clj') }}
+          restore-keys: |
+            ${{ runner.os }}-lein-
+
+      - name: Install dependencies
+        run: lein deps
+
+      - name: Run tests
+        run: lein test
+```
+
+Key changes
+
+Change Why
+setup-java@v4 Deterministic JDK version
+setup-clojure action Actually installs lein
+actions/cache@v4 Speeds up runs dramatically
+Pinned action versions Security & reproducibility
+
+Optional further improvements
+
+· Matrix testing across Java versions (17, 21) or Clojure versions
+· lein do clean, test to avoid stale artifacts
+· Add a lint step (clj-kondo) if you use it
+· lein test :only splits for faster feedback on big suites
+
+Want me to add a matrix strategy or a deps.edn-based variant?
+Here are both variants.
+
+1. Matrix strategy (with Leiningen)
+
+Tests across multiple JDK versions and Clojure versions. Clojure version is injected via a Leiningen profile so it doesn't require editing project.clj.
+
+```yaml
+name: Clojure CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [ '17', '21' ]
+        clojure: [ '1.11.1', '1.12.0' ]
+        # Only run Clojure 1.12 on JDK 21 to trim the matrix (optional)
+        exclude:
+          - java: '17'
+            clojure: '1.12.0'
+
+    name: JDK ${{ matrix.java }} / Clojure ${{ matrix.clojure }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      - name: Install Leiningen
+        uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          lein: 'latest'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.lein
+          key: ${{ runner.os }}-jdk${{ matrix.java }}-clj${{ matrix.clojure }}-lein-${{ hashFiles('project.clj') }}
+          restore-keys: |
+            ${{ runner.os }}-jdk${{ matrix.java }}-clj${{ matrix.clojure }}-lein-
+            ${{ runner.os }}-jdk${{ matrix.java }}-lein-
+
+      - name: Install dependencies
+        run: lein deps
+
+      - name: Run tests
+        run: lein with-profile +ci test
+        env:
+          # Overrides :dependencies in project.clj via a profile
+          CLOJURE_VERSION: ${{ matrix.clojure }}
+```
+
+Add this to project.clj so the matrix actually swaps Clojure versions:
+
+```clojure
+:profiles {:ci {:dependencies [[org.clojure/clojure ~(or (System/getenv "CLOJURE_VERSION") "1.11.1")]]}}
+```
+
+Tip: If your project already pins Clojure, drop the clojure matrix axis and just test JDK 17/21.
+
+---
+
+2. deps.edn variant (tools.deps / Clojure CLI)
+
+Use this if your project uses deps.edn instead of project.clj. The setup-clojure action installs clojure, and the CLI caches deps under ~/.gitlibs and ~/.m2.
+
+```yaml
+name: Clojure CI (deps.edn)
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [ '17', '21' ]
+        clojure: [ '1.11.1', '1.12.0' ]
+        exclude:
+          - java: '17'
+            clojure: '1.12.0'
+
+    name: JDK ${{ matrix.java }} / Clojure ${{ matrix.clojure }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      - name: Install Clojure CLI
+        uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          cli: 'latest'
+
+      - name: Cache Clojure deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            ~/.clojure
+          key: ${{ runner.os }}-jdk${{ matrix.java }}-clj${{ matrix.clojure }}-deps-${{ hashFiles('deps.edn') }}
+          restore-keys: |
+            ${{ runner.os }}-jdk${{ matrix.java }}-clj${{ matrix.clojure }}-deps-
+            ${{ runner.os }}-jdk${{ matrix.java }}-deps-
+
+      - name: Download dependencies
+        run: clojure -P -M:test
+
+      - name: Run tests
+        run: clojure -X:test
+        env:
+          CLOJURE_VERSION: ${{ matrix.clojure }}
+```
+
+And in your deps.edn:
+
+```clojure
+{:deps {org.clojure/clojure {:mvn/version "1.11.1"}}
+
+ :aliases
+ {:test
+  {:extra-paths ["test"]
+   :extra-deps  {io.github.cognitect-labs/test-runner
+                 {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
+   :main-opts   ["-m" "cognitect.test-runner"]
+   :exec-fn     cognitect.test-runner.api/test}
+
+  ;; Optional: lets you swap Clojure version from CI via -Sdeps
+  :ci {}}}
+```
+
+To actually vary Clojure version from the matrix, override it on the CLI:
+
+```yaml
+- name: Run tests
+  run: >
+    clojure -Sdeps "{:deps {org.clojure/clojure {:mvn/version \"${{ matrix.clojure }}\"}}}"
+    -X:test
+```
+
+---
+
+Which to pick?
+
+Situation Recommendation
+Library, wants wide compat Matrix over JDK and Clojure versions
+App with pinned toolchain Single JDK 21 + Clojure version
+Uses project.clj Leiningen variant
+Uses deps.edn CLI variant
+
+Notes on the matrix
+
+· fail-fast: false → see all failures, not just the first.
+· The exclude block is optional; remove it if you want full coverage.
+· Cache keys include JDK + Clojure so each matrix cell gets its own cache — reduces cross-contamination but uses more cache slots. If you hit the 10 GB repo cache limit, drop clojure from the key.
+
+Want me to add clj-kondo linting or code coverage (cloverage / Codecov) as additional steps?Here's the full workflow with clj-kondo linting and code coverage added.
+
+Complete workflow (Leiningen + lint + coverage)
+
+```yaml
+name: Clojure CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clj-kondo
+        uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          clj-kondo: 'latest'
+
+      - name: Cache clj-kondo
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/clj-kondo
+          key: ${{ runner.os }}-clj-kondo-${{ hashFiles('.clj-kondo/config.edn', 'deps.edn', 'project.clj') }}
+          restore-keys: |
+            ${{ runner.os }}-clj-kondo-
+
+      - name: Lint
+        run: clj-kondo --lint src test
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [ '17', '21' ]
+        clojure: [ '1.11.1', '1.12.0' ]
+        exclude:
+          - java: '17'
+            clojure: '1.12.0'
+
+    name: JDK ${{ matrix.java }} / Clojure ${{ matrix.clojure }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      - name: Install Leiningen
+        uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          lein: 'latest'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.lein
+          key: ${{ runner.os }}-jdk${{ matrix.java }}-clj${{ matrix.clojure }}-lein-${{ hashFiles('project.clj') }}
+          restore-keys: |
+            ${{ runner.os }}-jdk${{ matrix.java }}-clj${{ matrix.clojure }}-lein-
+
+      - name: Install dependencies
+        run: lein deps
+
+      - name: Run tests
+        run: lein with-profile +ci test
+        env:
+          CLOJURE_VERSION: ${{ matrix.clojure }}
+
+      - name: Run coverage
+        # Only on the primary matrix cell to save time & avoid duplicate uploads
+        if: matrix.java == '21' && matrix.clojure == '1.12.0'
+        run: lein with-profile +ci cloverage --codecov
+
+      - name: Upload coverage to Codecov
+        if: matrix.java == '21' && matrix.clojure == '1.12.0'
+        uses: codecov/codecov-action@v4
+        with:
+          files: target/coverage/codecov.json
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+```
+
+Required project.clj additions
+
+```clojure
+:profiles
+{:dev {:dependencies [[clj-kondo/clj-kondo "2024.08.29"]]}
+
+ :ci {:dependencies [[org.clojure/clojure ~(or (System/getenv "CLOJURE_VERSION") "1.11.1")]]}
+
+ :coverage {:plugins [[lein-cloverage "1.2.4"]]}}
+
+:cloverage
+{:codecov? true
+ :fail-threshold 0       ; set e.g. 70 to enforce a minimum
+ :src-ns-path ["src"]
+ :test-ns-path ["test"]}
+```
+
+Add cloverage as a plugin (top-level):
+
+```clojure
+:plugins [[lein-cloverage "1.2.4"]]
+```
+
+Required deps.edn variant (if using CLI)
+
+```clojure
+{:paths ["src"]
+ :deps  {org.clojure/clojure {:mvn/version "1.11.1"}}
+
+ :aliases
+ {:test
+  {:extra-paths ["test"]
+   :extra-deps  {io.github.cognitect-labs/test-runner
+                 {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
+   :main-opts   ["-m" "cognitect.test-runner"]}
+
+  :coverage
+  {:extra-deps {cloverage/cloverage {:mvn/version "1.2.4"}}
+   :main-opts  ["-m" "cloverage.coverage"
+                "-p" "src"
+                "-s" "test"
+                "--codecov"]}}}
+```
+
+And the corresponding job steps:
+
+```yaml
+- name: Run coverage
+  if: matrix.java == '21' && matrix.clojure == '1.12.0'
+  run: clojure -M:coverage
+```
+
+Add a lint config (optional but recommended)
+
+.clj-kondo/config.edn:
+
+```clojure
+{:linters
+ {:unused-namespace {:level :warning}
+  :unused-binding   {:level :warning}
+  :missing-docstring {:level :off}}}
+```
+
+Codecov setup
+
+1. Sign in at codecov.io with GitHub.
+2. Add the repo.
+3. Copy the upload token → GitHub repo → Settings → Secrets → Actions → new secret CODECOV_TOKEN.
+
+For public repos with GitHub Actions, Codecov v4 no longer needs the token, but it's still recommended (rate limits).
+
+Optional: enforce coverage threshold
+
+In project.clj:
+
+```clojure
+:cloverage {:fail-threshold 70}
+```
+
+This makes lein cloverage exit non-zero if coverage drops below 70%, failing the build.
+
+Summary of the pipeline
+
+```
+lint (clj-kondo)  ──►  test matrix  ──►  coverage (one cell)  ──►  Codecov
+   fast, fail early      JDK×Clojure         cloverage              report
+```
+
+· Lint runs first → catches style issues before spending matrix minutes.
+· needs: lint → test job waits for lint.
+· Coverage only on one cell → no duplicate uploads, saves ~N× time.
+· fail_ci_if_error: false → Codecov outages don't break your build.
+
+Want me to add lein cljfmt check (formatting) or a release/publish job that tags and pushes to Clojars on v* tags?Here's the final workflow with cljfmt formatting check and a Clojars release job on v* tags.
+
+Complete workflow
+
+```yaml
+name: Clojure CI
+
+on:
+  push:
+    branches: [ "master" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clj-kondo & cljfmt
+        uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          clj-kondo: 'latest'
+          cljfmt: 'latest'
+
+      - name: Cache clj-kondo
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/clj-kondo
+          key: ${{ runner.os }}-clj-kondo-${{ hashFiles('project.clj', '.clj-kondo/config.edn') }}
+
+      - name: Lint
+        run: clj-kondo --lint src test
+
+      - name: Check formatting
+        run: cljfmt check src test
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [ '17', '21' ]
+        clojure: [ '1.11.1', '1.12.0' ]
+        exclude:
+          - java: '17'
+            clojure: '1.12.0'
+
+    name: JDK ${{ matrix.java }} / Clojure ${{ matrix.clojure }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+
+      - name: Install Leiningen
+        uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          lein: 'latest'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.lein
+          key: ${{ runner.os }}-jdk${{ matrix.java }}-clj${{ matrix.clojure }}-lein-${{ hashFiles('project.clj') }}
+          restore-keys: |
+            ${{ runner.os }}-jdk${{ matrix.java }}-clj${{ matrix.clojure }}-lein-
+
+      - name: Install dependencies
+        run: lein deps
+
+      - name: Run tests
+        run: lein with-profile +ci test
+        env:
+          CLOJURE_VERSION: ${{ matrix.clojure }}
+
+      - name: Run coverage
+        if: matrix.java == '21' && matrix.clojure == '1.12.0'
+        run: lein with-profile +ci cloverage --codecov
+
+      - name: Upload coverage to Codecov
+        if: matrix.java == '21' && matrix.clojure == '1.12.0'
+        uses: codecov/codecov-action@v4
+        with:
+          files: target/coverage/codecov.json
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: write   # for creating the GitHub Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Leiningen
+        uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          lein: 'latest'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.lein
+          key: ${{ runner.os }}-release-lein-${{ hashFiles('project.clj') }}
+
+      - name: Verify tag matches project version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PROJ_VER=$(grep -oP ':version\s+"\K[^"]+' project.clj | head -1)
+          if [ "$TAG" != "$PROJ_VER" ]; then
+            echo "Tag ($TAG) does not match project.clj version ($PROJ_VER)"
+            exit 1
+          fi
+
+      - name: Deploy to Clojars
+        env:
+          CLOJARS_USERNAME: ${{ secrets.CLOJARS_USERNAME }}
+          CLOJARS_PASSWORD: ${{ secrets.CLOJARS_PASSWORD }}
+        run: lein deploy clojars
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+```
+
+New project.clj additions
+
+For the release job to publish correctly, make sure these are set:
+
+```clojure
+(defproject your-org/your-lib "1.2.3"
+  :description "…"
+  :url "https://github.com/you/your-lib"
+  :license {:name "EPL-2.0"
+            :url  "https://www.eclipse.org/legal/epl-2.0/"}
+
+  :dependencies [[org.clojure/clojure "1.11.1"]]
+
+  :plugins [[lein-cloverage "1.2.4"]]
+
+  ;; Where `lein deploy clojars` sends artifacts
+  :deploy-repositories
+  [["clojars" {:url "https://clojars.org/repo"
+               :username :env/clojars_username
+               :password :env/clojars_password}]]
+
+  :profiles
+  {:dev {:dependencies [[clj-kondo/clj-kondo "2024.08.29"]]}
+   :ci  {:dependencies [[org.clojure/clojure ~(or (System/getenv "CLOJURE_VERSION") "1.11.1")]]}}
+
+  :cloverage {:codecov? true
+              :fail-threshold 70})
+```
+
+cljfmt setup
+
+Add a .cljfmt.edn at the repo root so formatting rules are shared with contributors:
+
+```clojure
+{:indents {defproject [[:inner 0]]
+           with-profile [[:inner 0]]
+           testing [[:inner 0]]
+           deftest [[:inner 0]]}
+ :remove-consecutive-blank-lines? true
+ :remove-surrounding-whitespace? true
+ :insert-missing-whitespace? true}
+```
+
+Run locally:
+
+```bash
+# Check
+cljfmt check src test
+
+# Auto-fix
+cljfmt fix src test
+```
+
+Required GitHub secrets
+
+Secret Purpose
+CLOJARS_USERNAME Clojars deploy user
+CLOJARS_PASSWORD Clojars deploy token (not your login password — generate one under Clojars → Account → Tokens)
+CODECOV_TOKEN Codecov upload (optional for public repos)
+
+Add them under Repo → Settings → Secrets and variables → Actions.
+
+Release flow
+
+```bash
+# 1. Bump version in project.clj to 1.2.3
+# 2. Commit and tag
+git commit -am "Release 1.2.3"
+git tag v1.2.3
+git push origin master --tags
+```
+
+That triggers:
+
+```
+push tag v1.2.3
+   │
+   ├─► lint      (clj-kondo + cljfmt)
+   ├─► test      (JDK × Clojure matrix + coverage)
+   └─► release   (only on tags, needs test to pass)
+         ├─ verify tag == project.clj version
+         ├─ lein deploy clojars
+         └─ GitHub Release with auto notes
+```
+
+Notes & gotchas
+
+1. lein deploy clojars will publish signed artifacts if a GPG key is configured. If not, it warns but still uploads (Clojars no longer requires signing).
+2. Tag/version mismatch check — cheap guard against accidentally tagging v1.2.4 while project.clj still says 1.2.3. Without it, Clojars rejects the deploy anyway, but the error is clearer here.
+3. permissions: contents: write is needed for softprops/action-gh-release on repos with restricted default token permissions.
+4. cljfmt check fails the build on formatting drift — some teams prefer to only warn. To warn instead, remove it from the lint job or wrap with || true.
+5. Snapshot versions (1.2.3-SNAPSHOT) should not trigger release — the startsWith(github.ref, 'refs/tags/v') guard handles this since you won't tag snapshots.
+
+Full pipeline summary
+
+Job Trigger Purpose
+lint push/PR clj-kondo + cljfmt
+test push/PR JDK×Clojure matrix + coverage
+release v* tags only Verify version, deploy to Clojars, cut GitHub Release
+
+You now have: linting, formatting, multi-version testing, coverage reporting, and automated releases — a complete production-grade Clojure CI/CD setup.
